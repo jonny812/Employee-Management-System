@@ -14,6 +14,8 @@ import java.awt.Dimension;
 import java.awt.HeadlessException;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
+import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -189,13 +191,13 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
     }
 
     public void timeInOut() {
-        try {
+        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
             String employeeId = employeeIdField.getText();
             LocalDate today = LocalDate.now();
             LocalTime now = LocalTime.now();
 
             // Check if the employee_id is recorded
-            PreparedStatement pstmt = dashboard.connection.prepareStatement("SELECT * FROM employees_table WHERE employee_id=?");
+            PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM employees_table WHERE employee_id=?");
             pstmt.setString(1, employeeId);
             ResultSet rs = pstmt.executeQuery();
 
@@ -208,14 +210,14 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
 
                 // Check if already timed in today
                 String checkQuery = "SELECT * FROM attendance_table WHERE employee_id=? AND date=?";
-                pstmt = dashboard.connection.prepareStatement(checkQuery);
+                pstmt = connection.prepareStatement(checkQuery);
                 pstmt.setString(1, employeeId);
                 pstmt.setDate(2, java.sql.Date.valueOf(today));
                 rs = pstmt.executeQuery();
 
                 if (!rs.next()) {
                     String insertQuery = "INSERT INTO attendance_table (employee_id, date, time_in, status) VALUES (?, ?, ?, ?)";
-                    pstmt = dashboard.connection.prepareStatement(insertQuery);
+                    pstmt = connection.prepareStatement(insertQuery);
                     pstmt.setString(1, employeeId);
                     pstmt.setDate(2, java.sql.Date.valueOf(today));
                     pstmt.setTime(3, java.sql.Time.valueOf(now));
@@ -245,7 +247,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                         }
 
                         String updateQuery = "UPDATE attendance_table SET time_out=?, total_hours=? WHERE employee_id=? AND date=?";
-                        pstmt = dashboard.connection.prepareStatement(updateQuery);
+                        pstmt = connection.prepareStatement(updateQuery);
                         pstmt.setTime(1, java.sql.Time.valueOf(now));
                         pstmt.setDouble(2, hoursWorked);
                         pstmt.setString(3, employeeId);

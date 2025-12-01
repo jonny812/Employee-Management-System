@@ -15,7 +15,6 @@ import java.awt.HeadlessException;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -191,7 +190,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
     }
 
     public void timeInOut() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String employeeId = employeeIdField.getText();
             LocalDate today = LocalDate.now();
             LocalTime now = LocalTime.now();

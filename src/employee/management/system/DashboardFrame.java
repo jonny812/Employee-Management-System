@@ -149,7 +149,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             private void searchAction() {
                 String text = jTextField3.getText().trim();
 
-                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+                try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM payroll_table WHERE (employee_id LIKE ? OR employee_name LIKE ? OR position LIKE ?) ORDER BY employee_id DESC";
                     PreparedStatement pstmt = connection.prepareStatement(sql);
                     pstmt.setString(1, "%" + text + "%");
@@ -193,7 +193,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             private void searchAction() {
                 String text = jTextField1.getText().trim();
 
-                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+                try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM employees_table WHERE (employee_id LIKE ? OR full_name LIKE ? OR position LIKE ? OR department LIKE ?) ORDER BY employee_id DESC";
                     PreparedStatement pstmt = connection.prepareStatement(sql);
                     pstmt.setString(1, "%" + text + "%");
@@ -239,7 +239,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             private void searchAction() {
                 String text = jTextField2.getText().trim();
 
-                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+                try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM employees_table "
                             + "LEFT JOIN attendance_table ON employees_table.employee_id = attendance_table.employee_id "
                             + "WHERE employees_table.employee_id LIKE ? "
@@ -297,7 +297,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     // ------------------- NEW METHOD -------------------
 
     private void updateDashboardCounts() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             // Total employees
             PreparedStatement totalStmt = connection.prepareStatement(
                     "SELECT COUNT(*) FROM employees_table"
@@ -447,7 +447,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchPayroll() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement(
                     "SELECT employee_id, employee_name, position, net_pay, pay_period FROM payroll_table"
             );
@@ -481,7 +481,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetch() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement(
                     "SELECT employee_id, full_name, position, department FROM employees_table"
             );
@@ -513,7 +513,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchAttendanceList() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT employees_table.employee_id, employees_table.full_name, attendance_table.date, attendance_table.time_in, attendance_table.time_out "
                     + "FROM employees_table LEFT JOIN attendance_table ON employees_table.employee_id = attendance_table.employee_id ORDER BY attendance_id DESC");
             ResultSet rs = pstmt.executeQuery();
@@ -608,7 +608,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchTheUser() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT user_id, username FROM users_table ORDER BY user_id DESC");
             ResultSet rs = pstmt.executeQuery();
 
@@ -629,7 +629,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     public void fetchUser() {
         String savedUser = prefs.get("rememberedUser", null);
         if (savedUser != null) {
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM users_table WHERE username = ?");
                 pstmt.setString(1, savedUser);
 
@@ -647,7 +647,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void changePassword() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String currentPassword = new String(currentPasswordField.getPassword());
             String newPassword = new String(newPasswordField.getPassword());
             String confirmPassword = new String(confirmPasswordField.getPassword());
@@ -690,7 +690,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         if (username.isEmpty() || password.isEmpty()) {
             JOptionPane.showMessageDialog(this, "All Field Must be Field Out!");
         } else {
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("INSERT INTO users_table (admin, username, password) VALUES (1, ?, ?) ");
                 pstmt.setString(1, username);
                 pstmt.setString(2, password);
@@ -718,7 +718,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         if (username.isEmpty() || password.isEmpty()) {
             JOptionPane.showMessageDialog(this, "All Field Must be Field Out!");
         } else {
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("UPDATE users_table SET username = ?, password = ? WHERE user_id = ?");
                 pstmt.setString(1, username);
                 pstmt.setString(2, password);
@@ -742,7 +742,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         selectedUserId = Integer.parseInt(usersTable.getValueAt(row, 0).toString());
         if (JOptionPane.showConfirmDialog(this, "Are you sure you want to Remove this User?", "Confirmation",
                 JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("DELETE FROM users_table WHERE user_id = ?");
                 pstmt.setInt(1, selectedUserId);
                 pstmt.executeUpdate();
@@ -774,7 +774,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void generateQr() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             Statement stmt = connection.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT employee_id FROM employees_table ORDER BY employee_id DESC LIMIT 1");
             if (rs.next()) {
@@ -834,7 +834,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         int id = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
         selectedEmployeeId = id; // store globally
 
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String startDate = startDateField.getText();
             String endDate = endDateField.getText();
 
@@ -966,7 +966,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void recordPayslip() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String insertPayroll = "INSERT INTO payroll_table "
                     + "(employee_id, employee_name, position, monthly_salary, total_present, total_absent, "
                     + "total_hours_worked, standard_work_days, standard_hours, hourly_rate, gross_pay, "
@@ -1010,7 +1010,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void loadComboBox() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT date FROM attendance_table ORDER BY date DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox1.removeAllItems();
@@ -1025,7 +1025,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void loadEmployeeListComboBox() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM attendance_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox.removeAllItems();
@@ -1040,7 +1040,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void loadPayrollComboBox() {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM payroll_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox2.removeAllItems();
@@ -1055,7 +1055,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     private void loadEmployeeData(int id) {
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String sql = "SELECT * FROM employees_table WHERE employee_id = ?";
             PreparedStatement pstmt = connection.prepareStatement(sql);
             pstmt.setInt(1, id);
@@ -2850,7 +2850,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnUploadPhotoActionPerformed
 
     private void btnADDActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnADDActionPerformed
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String name = txtName.getText().trim();
             java.util.Date birthUtilDate = dateBirth.getDate(); // get Date object
             String gender = comboGender.getSelectedItem().toString();
@@ -2956,7 +2956,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 "Are you sure you want to Remove this?.",
                 "Confimation", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("DELETE FROM employees_table WHERE employee_id = ?");
                 pstmt.setString(1, id);
 
@@ -3053,7 +3053,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 "Are you sure you want to Remove this?.",
                 "Confimation", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("SELECT photo_path FROM employees_table WHERE employee_id = ?");
                 pstmt.setString(1, id);
                 ResultSet rs = pstmt.executeQuery();
@@ -3228,7 +3228,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         clearSelectionButton.setEnabled(true);
         int row = usersTable.getSelectedRow();
         selectedUserId = Integer.parseInt(usersTable.getValueAt(row, 0).toString());
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM users_table WHERE user_id = ?");
             pstmt.setInt(1, selectedUserId);
 
@@ -3264,7 +3264,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private void resetDatabaseButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_resetDatabaseButtonActionPerformed
         if (JOptionPane.showConfirmDialog(this, "Are you sure you want to RESET The DATABASE? This Cannot be Undone", "Confirmation",
                 JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt;
 
 //                File photoFile = new File("photos/");
@@ -3350,7 +3350,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     private void btnRemove1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRemove1ActionPerformed
         // TODO add your handling code here:
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             int confirm = JOptionPane.showConfirmDialog(
                     null,
                     "Are you sure you want to delete this payroll?",
@@ -3385,7 +3385,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnRemove1ActionPerformed
 
     private void btnView1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnView1ActionPerformed
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             // TODO add your handling code here:
             int row = payrollTable.getSelectedRow();
             if (row == -1) {

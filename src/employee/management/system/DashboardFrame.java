@@ -330,13 +330,12 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     public void Connect() {
         try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/", "root", "");
+            Connection connection = DatabaseConnection.getRootConnection();
             Statement stmt = connection.createStatement();
 
             stmt.execute("CREATE DATABASE IF NOT EXISTS employee_management_database");
 
-            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "");
+            connection = DatabaseConnection.getConnection();
             stmt = connection.createStatement();
 
             // -------------------- USERS TABLE --------------------
@@ -439,7 +438,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + ")";
             stmt.execute(createPayrollTable);
 
-        } catch (ClassNotFoundException | SQLException ex) {
+        } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(null, "Database Connecting Failed!\n" + ex.getLocalizedMessage());
             System.exit(0);

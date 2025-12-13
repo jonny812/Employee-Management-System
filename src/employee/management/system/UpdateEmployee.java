@@ -474,6 +474,9 @@ public class UpdateEmployee extends javax.swing.JPanel {
             pst.setDate(11, hiredSqlDate);
             pst.setInt(12, employeeId);
 
+            
+            
+            
             int updated = pst.executeUpdate();
 
             if (updated > 0) {

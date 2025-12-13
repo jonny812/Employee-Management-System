@@ -1403,7 +1403,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         jLabel1.setFont(new java.awt.Font("SansSerif", 1, 28)); // NOI18N
         jLabel1.setForeground(new java.awt.Color(255, 255, 255));
         jLabel1.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        jLabel1.setText("MENU");
+        jLabel1.setText("EMSys");
 
         jButton4.setBackground(new java.awt.Color(26, 0, 51));
         jButton4.setFont(new java.awt.Font("Segoe UI", 0, 16)); // NOI18N

@@ -53,7 +53,6 @@ import java.util.ArrayList;
 import java.util.prefs.Preferences;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
-import javax.swing.Timer;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
@@ -117,7 +116,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         fetchPayroll();
         loadComboBox();
         loadEmployeeListComboBox();
-        loadAtendanceListComboBox();
+        loadPayrollComboBox();
 
         card = (CardLayout) (jPanel3.getLayout());
 
@@ -153,7 +152,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                 try {
                     connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
-                    String sql = "SELECT * FROM payroll_table WHERE employee_id LIKE ? OR employee_name LIKE ? OR position LIKE ? ORDER BY employee_id DESC";
+                    String sql = "SELECT * FROM payroll_table WHERE (employee_id LIKE ? OR employee_name LIKE ? OR position LIKE ?) ORDER BY employee_id DESC";
                     PreparedStatement pstmt = connection.prepareStatement(sql);
                     pstmt.setString(1, "%" + text + "%");
                     pstmt.setString(2, "%" + text + "%");
@@ -198,7 +197,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                 try {
                     connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
-                    String sql = "SELECT * FROM employees_table WHERE employee_id LIKE ? OR full_name LIKE ? OR position LIKE ? OR department LIKE ? ORDER BY employee_id DESC";
+                    String sql = "SELECT * FROM employees_table WHERE (employee_id LIKE ? OR full_name LIKE ? OR position LIKE ? OR department LIKE ?) ORDER BY employee_id DESC";
                     PreparedStatement pstmt = connection.prepareStatement(sql);
                     pstmt.setString(1, "%" + text + "%");
                     pstmt.setString(2, "%" + text + "%");
@@ -336,8 +335,14 @@ public class DashboardFrame extends javax.swing.JFrame {
     public void Connect() {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
-            connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
+            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/", "root", "");
             Statement stmt = connection.createStatement();
+
+            stmt.execute("CREATE DATABASE IF NOT EXISTS employee_management_database");
+
+            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "");
+            stmt = connection.createStatement();
+
             // -------------------- USERS TABLE --------------------
             String createUsersTable = "CREATE TABLE IF NOT EXISTS users_table ("
                     + "user_id INT AUTO_INCREMENT PRIMARY KEY, "
@@ -374,16 +379,16 @@ public class DashboardFrame extends javax.swing.JFrame {
             // -------------------- INSERT SAMPLE EMPLOYEES --------------------
             String insertEmployees = "INSERT IGNORE INTO employees_table "
                     + "(photo_path, full_name, birth_date, gender, address, contact_number, email_address, position, department, salary, hired_date) VALUES "
-                    + "('photos/emp1.jpg', 'Juan Dela Cruz', '1995-04-12', 'Male', 'Manila City', '09171234567', 'juan.cruz@example.com', 'Software Engineer', 'IT Department', 35000.00, '2022-03-10'), "
+                    + "('photos/emp1.jpg', 'Juan Dela Cruz', '1995-04-12', 'Male', 'Manila City', '09171234567', 'juan.cruz@example.com', 'Software Engineer', 'Information Technology (IT)', 35000.00, '2022-03-10'), "
                     + "('photos/emp2.jpg', 'Maria Santos', '1998-07-21', 'Female', 'Quezon City', '09281234567', 'maria.santos@example.com', 'HR Officer', 'Human Resources', 30000.00, '2021-11-05'), "
-                    + "('photos/emp3.jpg', 'Mark Reyes', '1992-01-18', 'Male', 'Pasig City', '09181231234', 'mark.reyes@example.com', 'Accountant', 'Finance', 32000.00, '2020-06-15'), "
+                    + "('photos/emp3.jpg', 'Mark Reyes', '1992-01-18', 'Male', 'Pasig City', '09181231234', 'mark.reyes@example.com', 'Accountant', 'Finance & Accounting', 32000.00, '2020-06-15'), "
                     + "('photos/emp4.jpg', 'Angela Cruz', '1996-10-04', 'Female', 'Cebu City', '09351231231', 'angela.cruz@example.com', 'Graphic Designer', 'Marketing', 28000.00, '2023-01-12'), "
-                    + "('photos/emp5.jpg', 'John Bautista', '1993-03-09', 'Male', 'Davao City', '09491234567', 'john.bautista@example.com', 'IT Support', 'IT Department', 26000.00, '2021-05-20'), "
+                    + "('photos/emp5.jpg', 'John Bautista', '1993-03-09', 'Male', 'Davao City', '09491234567', 'john.bautista@example.com', 'IT Support', 'Information Technology (IT)', 26000.00, '2021-05-20'), "
                     + "('photos/emp6.jpg', 'Catherine Lim', '1997-12-11', 'Female', 'Makati City', '09291231231', 'catherine.lim@example.com', 'Sales Associate', 'Sales', 25000.00, '2022-10-01'), "
-                    + "('photos/emp7.jpg', 'Joseph Tan', '1998-02-27', 'Male', 'Taguig City', '09191231212', 'joseph.tan@example.com', 'Project Manager', 'Operations', 45000.00, '2019-04-08'), "
+                    + "('photos/emp7.jpg', 'Joseph Tan', '1998-02-27', 'Male', 'Taguig City', '09191231212', 'joseph.tan@example.com', 'Project Manager', 'Administration & Operations', 45000.00, '2019-04-08'), "
                     + "('photos/emp8.jpg', 'Elaine Garcia', '1999-05-30', 'Female', 'Las Piñas City', '09301231231', 'elaine.garcia@example.com', 'Receptionist', 'Front Desk', 20000.00, '2023-08-03'), "
-                    + "('photos/emp9.jpg', 'Patrick Villanueva', '1994-09-23', 'Male', 'Caloocan City', '09181231234', 'patrick.villanueva@example.com', 'Network Technician', 'IT Department', 27000.00, '2021-09-10'), "
-                    + "('photos/emp10.jpg', 'Liza Ramos', '1998-06-25', 'Female', 'Baguio City', '09271231231', 'liza.ramos@example.com', 'Administrative Assistant', 'Admin', 23000.00, '2020-02-17') ";
+                    + "('photos/emp9.jpg', 'Patrick Villanueva', '1994-09-23', 'Male', 'Caloocan City', '09181231234', 'patrick.villanueva@example.com', 'Network Technician', 'Information Technology (IT)', 27000.00, '2021-09-10'), "
+                    + "('photos/emp10.jpg', 'Liza Ramos', '1998-06-25', 'Female', 'Baguio City', '09271231231', 'liza.ramos@example.com', 'Administrative Assistant', 'Administration & Operations', 23000.00, '2020-02-17') ";
             stmt.executeUpdate(insertEmployees);
 
             // -------------------- ATTENDANCE TABLE --------------------
@@ -446,7 +451,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchPayroll() {
-        Connect();
         try {
             PreparedStatement pstmt = connection.prepareStatement(
                     "SELECT employee_id, employee_name, position, net_pay, pay_period FROM payroll_table"
@@ -481,7 +485,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetch() {
-        Connect();
         try {
             PreparedStatement pstmt = connection.prepareStatement(
                     "SELECT employee_id, full_name, position, department FROM employees_table"
@@ -514,7 +517,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchAttendanceList() {
-        Connect();
         try {
             PreparedStatement pstmt = connection.prepareStatement("SELECT employees_table.employee_id, employees_table.full_name, attendance_table.date, attendance_table.time_in, attendance_table.time_out "
                     + "FROM employees_table LEFT JOIN attendance_table ON employees_table.employee_id = attendance_table.employee_id ORDER BY attendance_id DESC");
@@ -583,8 +585,8 @@ public class DashboardFrame extends javax.swing.JFrame {
         txtContact.setText("");
         txtSalary.setText("");
         txtEmail.setText("");
-        comboPosition.setSelectedIndex(0);
-        comboDepartment.setSelectedIndex(0);
+        comboPosition.setSelectedIndex(-1);
+        comboDepartment.setSelectedIndex(-1);
         if (dateHired != null) {
             dateHired.setDate(null);
         }
@@ -1041,7 +1043,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }
 
-    public void loadAtendanceListComboBox() {
+    public void loadPayrollComboBox() {
         try {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM payroll_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
@@ -1107,16 +1109,18 @@ public class DashboardFrame extends javax.swing.JFrame {
                     dateHired.setDate(hired);
                 }
 
-                // ✅ LOAD PHOTO if exists
-                String imgPath = rs.getString("photo_path");
-                if (imgPath != null && !imgPath.isEmpty()) {
+                selectedFile = new File(rs.getString("photo_path"));
+                imagePath = selectedFile.getAbsolutePath();
+
+                if (imagePath != null && !imagePath.isEmpty()) {
                     ImageIcon imageIcon = new ImageIcon(
-                            new ImageIcon(imgPath).getImage().getScaledInstance(120, 120, Image.SCALE_SMOOTH)
+                            new ImageIcon(imagePath).getImage().getScaledInstance(120, 120, Image.SCALE_SMOOTH)
                     );
                     imageHolder.setIcon(imageIcon);
+                    imageHolder.setText("");
                 }
 
-                qrHolder.setIcon(new ImageIcon(new ImageIcon("qrcodes/" + id + ".png").getImage().getScaledInstance(150, 150, Image.SCALE_SMOOTH)));
+                qrHolder.setIcon(new ImageIcon(new ImageIcon("qrcodes/" + id + ".png").getImage().getScaledInstance(120, 120, Image.SCALE_SMOOTH)));
                 qrHolder.setText("");
             }
 
@@ -1182,18 +1186,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             if (updated > 0) {
                 JOptionPane.showMessageDialog(this, "✅ Employee updated successfully!");
 
-                // ✅ Refresh the table inside DashboardFrame safely
-                java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
-                if (window instanceof DashboardFrame) {
-                    ((DashboardFrame) window).fetch();
-                }
-
-                // ✅ Then return to the ViewEmployeeList panel
-                java.awt.Container parent = this.getParent();
-                if (parent.getLayout() instanceof java.awt.CardLayout) {
-                    java.awt.CardLayout card = (java.awt.CardLayout) parent.getLayout();
-                    card.show(parent, "viewEmployeeList");
-                }
+                card.show(jPanel3, "card4");
 
                 btnUpdate.setEnabled(false);
                 btnRemove.setEnabled(false);
@@ -1201,7 +1194,12 @@ public class DashboardFrame extends javax.swing.JFrame {
                 unselectButton.setEnabled(false);
                 employeesTable.clearSelection();
 
-                card.show(jPanel3, "card4");
+                // ✅ Refresh the table inside DashboardFrame safely
+                java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
+                if (window instanceof DashboardFrame) {
+                    ((DashboardFrame) window).fetch();
+                }
+
             } else {
                 JOptionPane.showMessageDialog(this, "⚠️ Failed to update employee!", "Error", JOptionPane.ERROR_MESSAGE);
             }
@@ -1220,7 +1218,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         jPopupMenu1 = new javax.swing.JPopupMenu();
         update = new javax.swing.JMenuItem();
         remove = new javax.swing.JMenuItem();
-        view = new javax.swing.JMenuItem();
         jTextField1 = new javax.swing.JTextField();
         jTextField2 = new javax.swing.JTextField();
         jTextField3 = new javax.swing.JTextField();
@@ -1372,15 +1369,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         });
         jPopupMenu1.add(remove);
 
-        view.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        view.setText("View");
-        view.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                viewActionPerformed(evt);
-            }
-        });
-        jPopupMenu1.add(view);
-
         jTextField1.setText("jTextField1");
 
         jTextField2.setText("jTextField1");
@@ -1389,7 +1377,8 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Employee Management System");
-        setMinimumSize(new java.awt.Dimension(1055, 500));
+        setMinimumSize(new java.awt.Dimension(1000, 600));
+        setPreferredSize(new java.awt.Dimension(1200, 700));
 
         jPanel1.setBackground(new java.awt.Color(0, 51, 51));
         jPanel1.setForeground(new java.awt.Color(0, 0, 0));
@@ -1397,6 +1386,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jPanel2.setBackground(new java.awt.Color(26, 0, 51));
         jPanel2.setForeground(new java.awt.Color(26, 0, 51));
+        jPanel2.setAutoscrolls(true);
         jPanel2.setPreferredSize(new java.awt.Dimension(200, 287));
 
         jLabel1.setBackground(new java.awt.Color(204, 255, 255));
@@ -1586,7 +1576,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 .addComponent(jButton2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jButton5, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 119, Short.MAX_VALUE)
+                .addGap(18, 18, Short.MAX_VALUE)
                 .addComponent(jButton8, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jButton7, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -1710,6 +1700,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         addEmployeePanel.setBackground(new java.awt.Color(221, 221, 221));
         addEmployeePanel.setForeground(new java.awt.Color(30, 30, 30));
+        addEmployeePanel.setAutoscrolls(true);
 
         name.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
         name.setForeground(new java.awt.Color(51, 51, 51));
@@ -1800,6 +1791,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         comboPosition.setBackground(new java.awt.Color(0, 153, 153));
         comboPosition.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Chief Operating Officer (COO)", "Chief Financial Officer (CFO)", "Chief Technology Officer (CTO)", "Vice President of Marketing", "Office Manager", "Operations Coordinator", "Administrative Assistant", "Project Manager", "Facilities Supervisor", "Accountant", "Financial Analyst", "Payroll Specialist", "Internal Auditor", "Accounts Payable Clerk", "HR Manager", "Recruiter / Talent Acquisition Specialist", "Training & Development Coordinator", "Compensation & Benefits Analyst", "Employee Relations Specialist", "Marketing Manager", "Social Media Specialist", "Sales Representative", "Business Development Manager", "Customer Success Manager", "Software Engineer", "Data Analyst", "IT Support Specialist", "Cybersecurity Analyst", "Systems Administrator", "Product Manager", "UX/UI Designer", "Graphic Designer", "Quality Assurance Tester", "Research & Development Specialist", "Call Center Agent", "Technical Support Representative", "Client Relations Coordinator", "Customer Experience Specialist" }));
+        comboPosition.setSelectedIndex(-1);
         comboPosition.setPreferredSize(new java.awt.Dimension(250, 30));
         comboPosition.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -1813,6 +1805,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         comboDepartment.setBackground(new java.awt.Color(0, 153, 153));
         comboDepartment.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Executive / Leadership", "Administration & Operations", "Finance & Accounting", "Human Resources", "Marketing & Sales", "Information Technology (IT)", "Product Development & Design", "Customer Service", "Research & Development (R&D)", "Legal & Compliance", "Procurement & Supply Chain", "Manufacturing / Production", "Quality Assurance", "Public Relations & Communications" }));
+        comboDepartment.setSelectedIndex(-1);
         comboDepartment.setPreferredSize(new java.awt.Dimension(250, 30));
 
         btnADD.setBackground(new java.awt.Color(0, 204, 102));
@@ -2148,9 +2141,9 @@ public class DashboardFrame extends javax.swing.JFrame {
             jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel4Layout.createSequentialGroup()
                 .addComponent(jComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 15, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 18, Short.MAX_VALUE)
                 .addComponent(unselectButton)
-                .addGap(97, 97, 97)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 100, Short.MAX_VALUE)
                 .addComponent(btnUpdate)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnRemove, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -2336,7 +2329,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jTabbedPane1.setBackground(new java.awt.Color(26, 0, 51));
         jTabbedPane1.setFont(new java.awt.Font("Segoe UI", 0, 18)); // NOI18N
-        jTabbedPane1.setMinimumSize(new java.awt.Dimension(600, 400));
+        jTabbedPane1.setMinimumSize(new java.awt.Dimension(700, 500));
         jTabbedPane1.setPreferredSize(new java.awt.Dimension(900, 600));
 
         changePasswordPanel.setBackground(new java.awt.Color(26, 0, 51));
@@ -2826,12 +2819,14 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         card.show(jPanel3, "card4");
         fetch();
+        loadEmployeeListComboBox();
     }//GEN-LAST:event_jButton2ActionPerformed
 
     private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card3");
         fetchAttendanceList();
+        loadComboBox();
     }//GEN-LAST:event_jButton3ActionPerformed
 
     private void btnUploadPhotoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUploadPhotoActionPerformed
@@ -2946,15 +2941,15 @@ public class DashboardFrame extends javax.swing.JFrame {
                 JOptionPane.WARNING_MESSAGE
         ) == JOptionPane.YES_OPTION) {
             clearFields();
+
+            btnUpdate.setEnabled(false);
+            btnRemove.setEnabled(false);
+            generatePayslipButton.setEnabled(false);
+            unselectButton.setEnabled(false);
+            employeesTable.clearSelection();
+
+            card.show(jPanel3, "card4");
         }
-
-        btnUpdate.setEnabled(false);
-        btnRemove.setEnabled(false);
-        generatePayslipButton.setEnabled(false);
-        unselectButton.setEnabled(false);
-        employeesTable.clearSelection();
-
-        card.show(jPanel3, "card4");
 
     }//GEN-LAST:event_btnCANCELActionPerformed
 
@@ -2991,45 +2986,30 @@ public class DashboardFrame extends javax.swing.JFrame {
         int id = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
         selectedEmployeeId = id; // store globally
 
-        // Remove old instance if it exists (to avoid duplicates)
-        for (java.awt.Component comp : jPanel3.getComponents()) {
-            if (comp instanceof UpdateEmployee) {
-                jPanel3.remove(comp);
-                break;
-            }
-        }
+        loadEmployeeData(id);
+        card.show(jPanel3, "card2");
 
-        // Add new UpdateEmployee panel
-        UpdateEmployee updatePanel = new UpdateEmployee(selectedEmployeeId, this);
-        jPanel3.add(updatePanel, "updateEmployee");
+        btnADD.setEnabled(false);
+        btnSAVE1.setEnabled(true);
+        btnCANCEL.setEnabled(true);
 
-        // Switch to the update panel
-        CardLayout card = (CardLayout) (jPanel3.getLayout());
-        card.show(jPanel3, "updateEmployee");
         jPanel3.revalidate();
         jPanel3.repaint();
 
     }//GEN-LAST:event_updateActionPerformed
 
-    private void viewActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_viewActionPerformed
-        // TODO add your handling code here: 
-
-        int selectedRow = employeesTable.getSelectedRow();
-        if (selectedRow >= 0) {
-            Object value = employeesTable.getValueAt(selectedRow, 0); // adjust column index if needed
-            int id = Integer.parseInt(value.toString());
-            new ViewEmployeeFrame(id).setVisible(true);
-        } else {
-            JOptionPane.showMessageDialog(this, "Please select an employee first.");
-        }
-
-
-    }//GEN-LAST:event_viewActionPerformed
-
     private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card2");
         clearFields();
+
+        btnADD.setEnabled(true);
+        btnSAVE1.setEnabled(false);
+        btnCANCEL.setEnabled(false);
+
+        this.revalidate();
+        this.repaint();
+
     }//GEN-LAST:event_jButton1ActionPerformed
 
     private void jButton6ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton6ActionPerformed
@@ -3038,12 +3018,16 @@ public class DashboardFrame extends javax.swing.JFrame {
             this.dispose();
             new LoginPage(this).setVisible(true);
         }
+        this.revalidate();
+        this.repaint();
     }//GEN-LAST:event_jButton6ActionPerformed
 
     private void jButton4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton4ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card1");
         updateDashboardCounts();
+        this.revalidate();
+        this.repaint();
     }//GEN-LAST:event_jButton4ActionPerformed
 
     private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton5ActionPerformed
@@ -3053,11 +3037,16 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnView1.setEnabled(false);
         unselectButton1.setEnabled(false);
         payrollTable.clearSelection();
+        this.revalidate();
+        this.repaint();
+        loadPayrollComboBox();
     }//GEN-LAST:event_jButton5ActionPerformed
 
     private void jButton7ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton7ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card6");
+        this.revalidate();
+        this.repaint();
     }//GEN-LAST:event_jButton7ActionPerformed
 
     private void btnRemoveActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRemoveActionPerformed
@@ -3477,6 +3466,8 @@ public class DashboardFrame extends javax.swing.JFrame {
         timeInOut.setVisible(true);
         timeInOut.toFront();
 
+        this.revalidate();
+        this.repaint();
     }//GEN-LAST:event_jButton8ActionPerformed
 
     private void btnSAVE1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSAVE1ActionPerformed
@@ -3649,7 +3640,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JButton updateButton;
     private javax.swing.JTextField usernameField;
     private javax.swing.JTable usersTable;
-    private javax.swing.JMenuItem view;
     private javax.swing.JPanel viewEmployeeList;
     // End of variables declaration//GEN-END:variables
 }

@@ -116,7 +116,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         fetchPayroll();
         loadComboBox();
         loadEmployeeListComboBox();
-        loadAtendanceListComboBox();
+        loadPayrollComboBox();
 
         card = (CardLayout) (jPanel3.getLayout());
 
@@ -335,8 +335,14 @@ public class DashboardFrame extends javax.swing.JFrame {
     public void Connect() {
         try {
             Class.forName("com.mysql.cj.jdbc.Driver");
-            connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
+            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/", "root", "");
             Statement stmt = connection.createStatement();
+
+            stmt.execute("CREATE DATABASE IF NOT EXISTS employee_management_database");
+
+            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "");
+            stmt = connection.createStatement();
+
             // -------------------- USERS TABLE --------------------
             String createUsersTable = "CREATE TABLE IF NOT EXISTS users_table ("
                     + "user_id INT AUTO_INCREMENT PRIMARY KEY, "
@@ -1037,7 +1043,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }
 
-    public void loadAtendanceListComboBox() {
+    public void loadPayrollComboBox() {
         try {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM payroll_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
@@ -2813,12 +2819,14 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         card.show(jPanel3, "card4");
         fetch();
+        loadEmployeeListComboBox();
     }//GEN-LAST:event_jButton2ActionPerformed
 
     private void jButton3ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton3ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card3");
         fetchAttendanceList();
+        loadComboBox();
     }//GEN-LAST:event_jButton3ActionPerformed
 
     private void btnUploadPhotoActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUploadPhotoActionPerformed
@@ -3031,6 +3039,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         payrollTable.clearSelection();
         this.revalidate();
         this.repaint();
+        loadPayrollComboBox();
     }//GEN-LAST:event_jButton5ActionPerformed
 
     private void jButton7ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton7ActionPerformed

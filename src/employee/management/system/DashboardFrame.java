@@ -2290,17 +2290,17 @@ public class DashboardFrame extends javax.swing.JFrame {
         payrollTable.setForeground(new java.awt.Color(0, 0, 0));
         payrollTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null}
+                {null, null, null, null, null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null, null, null, null, null}
             },
             new String [] {
-                "Employee ID", "Name", "Position", "Net Pay", "Pay Period"
+                "Employee ID", "Name", "Position", "Regular Pay", "OT Pay", "Late Deduct", "Absent Deduct", "Gov Contributions", "Total Deduct", "Net Pay", "Pay Period"
             }
         ) {
             boolean[] canEdit = new boolean [] {
-                false, false, false, false, false
+                false, false, false, false, false, false, false, false, false, false, false
             };
 
             public boolean isCellEditable(int rowIndex, int columnIndex) {

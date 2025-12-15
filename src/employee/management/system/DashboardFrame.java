@@ -98,6 +98,13 @@ public class DashboardFrame extends javax.swing.JFrame {
     double tax = 0.0;
     double totalDeductions = 0.0;
     double netPay = 0.0;
+    // Additional payroll fields
+    double regularPay = 0.0;
+    double otPay = 0.0;
+    double lateDeduct = 0.0;
+    double absentDeduct = 0.0;
+    double govContributions = 0.0;
+    double totalDeduct = 0.0;
 
     String employeeName = "";
     String position = "";
@@ -831,23 +838,20 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         int row = employeesTable.getSelectedRow();
         if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Please select an employee to edit!");
+            JOptionPane.showMessageDialog(this, "Please select an employee to generate payslip!");
             return;
         }
 
-        int id = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
-        selectedEmployeeId = id; // store globally
+        selectedEmployeeId = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
 
         try {
             String startDate = startDateField.getText();
             String endDate = endDateField.getText();
 
-            // Define payroll period
-//            String payPeriod = today.getYear() + "-" + today.getMonth() + "-" + startOfMonth.getDayOfMonth() + "-" + endOfMonth.getDayOfMonth();
-            // Select employee
+            // Fetch employee data
             String empQuery = "SELECT full_name, position, salary FROM employees_table WHERE employee_id = ?";
             PreparedStatement pstmt = connection.prepareStatement(empQuery);
-            pstmt.setInt(1, id);
+            pstmt.setInt(1, selectedEmployeeId);
             ResultSet rs = pstmt.executeQuery();
 
             if (rs.next()) {
@@ -855,129 +859,126 @@ public class DashboardFrame extends javax.swing.JFrame {
                 position = rs.getString("position");
                 monthlySalary = rs.getDouble("salary");
 
-                totalWorkingDays = 0;
-                if (!totalWorkDaysField.getText().isEmpty()) {
-                    totalWorkingDays = Integer.parseInt(totalWorkDaysField.getText());
-                }
+                // Total working days
+                totalWorkingDays = totalWorkDaysField.getText().isEmpty() ? 0 : Integer.parseInt(totalWorkDaysField.getText());
 
-                // Count total present and absent days from attendance
+                // Count total present
                 String countPresentQuery = "SELECT COUNT(*) AS total_present FROM attendance_table "
                         + "WHERE employee_id=? AND date BETWEEN ? AND ? AND status='Present'";
                 pstmt = connection.prepareStatement(countPresentQuery);
-                pstmt.setInt(1, id);
+                pstmt.setInt(1, selectedEmployeeId);
                 pstmt.setString(2, startDate);
                 pstmt.setString(3, endDate);
                 rs = pstmt.executeQuery();
+                totalPresent = rs.next() ? rs.getInt("total_present") : 0;
 
-                totalPresent = 0;
-                if (rs.next()) {
-                    totalPresent = rs.getInt("total_present");
-                }
+                // Absent days
+                absentDays = Math.max(0, totalWorkingDays - totalPresent);
 
-                absentDays = totalWorkingDays - totalPresent;
-                if (absentDays < 0) {
-                    absentDays = 0;
-                }
-
-                // 1. Get total work hours from attendance table
-                String sql = "SELECT SUM(total_hours) AS total_hours_worked "
+                // Total hours worked
+                String hoursQuery = "SELECT SUM(total_hours) AS total_hours_worked "
                         + "FROM attendance_table "
-                        + "WHERE employee_id = ? AND date >= ? AND date <= ?";
-                pstmt = connection.prepareStatement(sql);
-                pstmt.setInt(1, id);
+                        + "WHERE employee_id = ? AND date BETWEEN ? AND ?";
+                pstmt = connection.prepareStatement(hoursQuery);
+                pstmt.setInt(1, selectedEmployeeId);
                 pstmt.setDate(2, Date.valueOf(startDate));
                 pstmt.setDate(3, Date.valueOf(endDate));
                 rs = pstmt.executeQuery();
-                totalHoursWorked = 0;
-                if (rs.next()) {
-                    totalHoursWorked = rs.getDouble("total_hours_worked");
-                }
+                totalHoursWorked = rs.next() ? rs.getDouble("total_hours_worked") : 0.0;
 
-                // 2. Calculate hourly rate
-                standardMonthlyHours = totalWorkingDays * 8; // 26 days x 8 hours/day
-                hourlyRate = monthlySalary / standardMonthlyHours;
+                // Standard hours
+                standardMonthlyHours = totalWorkingDays * 8;
 
-                // 3. Calculate gross pay based on actual hours
-                grossPay = hourlyRate * totalHoursWorked;
+                // Hourly rate
+                hourlyRate = standardMonthlyHours > 0 ? monthlySalary / standardMonthlyHours : 0;
 
-                // 4. Compute deductions (using same rules as monthly, prorate for hours)
-                sss = (monthlySalary * 0.05) * (totalHoursWorked / standardMonthlyHours);
-                philHealth = (monthlySalary * 0.025) * (totalHoursWorked / standardMonthlyHours);
+                // Regular pay
+                regularPay = hourlyRate * Math.min(totalHoursWorked, standardMonthlyHours);
+
+                // Overtime pay
+                otPay = totalHoursWorked > standardMonthlyHours ? hourlyRate * (totalHoursWorked - standardMonthlyHours) : 0;
+
+                // Absences / late deductions (example calculation, adjust if needed)
+                absentDeduct = hourlyRate * (standardMonthlyHours - totalHoursWorked > 0 ? standardMonthlyHours - totalHoursWorked : 0);
+                lateDeduct = 0; // You can calculate based on your attendance rules
+
+                // Gross pay = regular + overtime
+                grossPay = regularPay + otPay;
+
+                // Contributions
+                sss = monthlySalary * 0.05 * (totalHoursWorked / standardMonthlyHours);
+                philHealth = monthlySalary * 0.025 * (totalHoursWorked / standardMonthlyHours);
                 pagibig = Math.min(monthlySalary, 10000) * 0.02 * (totalHoursWorked / standardMonthlyHours);
+                govContributions = sss + philHealth + pagibig;
 
-                // Taxable income
-                taxableIncome = grossPay - (sss + philHealth + pagibig);
-                tax = computeWithholdingTaxMonthly(taxableIncome); // simplified monthly tax
+                // Tax
+                taxableIncome = grossPay - govContributions;
+                tax = computeWithholdingTaxMonthly(taxableIncome);
 
-                totalDeductions = sss + philHealth + pagibig + tax;
-                netPay = grossPay - totalDeductions;
+                // Total deductions
+                totalDeduct = govContributions + tax + absentDeduct + lateDeduct;
 
-                if (!(totalHoursWorked > standardMonthlyHours)) {
-                    payslip
-                            = "----------------------------------------\n"
-                            + "                PAYSLIP\n"
-                            + "----------------------------------------\n"
-                            + "EMPLOYEE INFO\n"
-                            + "----------------------------------------\n"
-                            + "Employee Name      : " + employeeName + "\n"
-                            + "Employee ID        : " + id + "\n"
-                            + "Position           : " + position + "\n"
-                            + "Monthly Salary     : " + String.format("%.2f", monthlySalary) + "\n"
-                            + "Total Present      : " + totalPresent + "\n"
-                            + "Total Absent       : " + absentDays + "\n"
-                            + "Total Hours Worked : " + String.format("%.2f", totalHoursWorked) + "\n"
-                            + "Standard Work Days : " + totalWorkingDays + "\n"
-                            + "Standard Hours     : " + standardMonthlyHours + "\n"
-                            + "Hourly Rate        : " + String.format("%.2f", hourlyRate) + "\n"
-                            + "----------------------------------------\n"
-                            + "EARNINGS\n"
-                            + "----------------------------------------\n"
-                            + "Gross Pay          : " + String.format("%.2f", grossPay) + "\n"
-                            + "----------------------------------------\n"
-                            + "DEDUCTIONS\n"
-                            + "----------------------------------------\n"
-                            + "SSS                : " + String.format("%.2f", sss) + "\n"
-                            + "PhilHealth         : " + String.format("%.2f", philHealth) + "\n"
-                            + "Pag-IBIG           : " + String.format("%.2f", pagibig) + "\n"
-                            + "Taxable Income     : " + String.format("%.2f", taxableIncome) + "\n"
-                            + "Tax                : " + String.format("%.2f", tax) + "\n"
-                            + "Total Deduction    : " + String.format("%.2f", totalDeductions) + "\n"
-                            + "----------------------------------------\n"
-                            + "NET PAY            : " + String.format("%.2f", netPay) + "\n"
-                            + "----------------------------------------\n"
-                            + "Date               : " + today + "\n"
-                            + "Prepared by        : " + preparedByField.getText() + "\n";
-                    receiptArea.setText(payslip);
-                }
+                // Net pay
+                netPay = grossPay - totalDeduct;
 
-                // Insert payroll record
-//                String insertPayroll = "INSERT INTO payroll_table (employee_id, total_working_days, absent_days, daily_rate, absence_deduction, net_pay, pay_period) "
-//                        + "VALUES (?, ?, ?, ?, ?, ?, ?)";
-//                pstmt = mainFrame.connection.prepareStatement(insertPayroll);
-//                pstmt.setInt(1, employeeId);
-//                pstmt.setInt(2, totalWorkingDays);
-//                pstmt.setInt(3, absentDays);
-//                pstmt.setDouble(4, dailyRate);
-//                pstmt.setDouble(5, absenceDeduction);
-//                pstmt.setDouble(6, netPay);
-//                pstmt.setString(7, payPeriod);
-//                pstmt.executeUpdate();
+                // Prepare payslip text
+                payslip = "------------------------------\n"
+                        + "          PAYSLIP\n"
+                        + "------------------------------\n"
+                        + "Employee Name  : " + employeeName + "\n"
+                        + "Employee ID    : " + selectedEmployeeId + "\n"
+                        + "Position       : " + position + "\n"
+                        + "Monthly Salary : " + String.format("%.2f", monthlySalary) + "\n"
+                        + "Total Present  : " + totalPresent + "\n"
+                        + "Total Absent   : " + absentDays + "\n"
+                        + "Total Hours    : " + String.format("%.2f", totalHoursWorked) + "\n"
+                        + "Standard Hours : " + standardMonthlyHours + "\n"
+                        + "Hourly Rate    : " + String.format("%.2f", hourlyRate) + "\n"
+                        + "Regular Pay    : " + String.format("%.2f", regularPay) + "\n"
+                        + "OT Pay         : " + String.format("%.2f", otPay) + "\n"
+                        + "Gross Pay      : " + String.format("%.2f", grossPay) + "\n"
+                        + "SSS            : " + String.format("%.2f", sss) + "\n"
+                        + "PhilHealth     : " + String.format("%.2f", philHealth) + "\n"
+                        + "Pag-IBIG       : " + String.format("%.2f", pagibig) + "\n"
+                        + "Absent Deduct  : " + String.format("%.2f", absentDeduct) + "\n"
+                        + "Late Deduct    : " + String.format("%.2f", lateDeduct) + "\n"
+                        + "Taxable Income : " + String.format("%.2f", taxableIncome) + "\n"
+                        + "Tax            : " + String.format("%.2f", tax) + "\n"
+                        + "Total Deduct   : " + String.format("%.2f", totalDeduct) + "\n"
+                        + "Net Pay        : " + String.format("%.2f", netPay) + "\n"
+                        + "Date           : " + today + "\n"
+                        + "Prepared By    : " + preparedByField.getText() + "\n";
+
+                receiptArea.setText(payslip);
             }
-        } catch (HeadlessException | SQLException ex) {
+
+        } catch (SQLException | HeadlessException ex) {
             JOptionPane.showMessageDialog(this, "Error generating payslip: " + ex.getMessage());
         }
 
     }
 
     public void recordPayslip() {
-        try {
-            String insertPayroll = "INSERT INTO payroll_table "
-                    + "(employee_id, employee_name, position, monthly_salary, total_present, total_absent, "
-                    + "total_hours_worked, standard_work_days, standard_hours, hourly_rate, gross_pay, "
-                    + "sss, philhealth, pagibig, taxable_income, tax, total_deduction, net_pay, pay_period, prepared_by) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-            PreparedStatement ps = connection.prepareStatement(insertPayroll);
+        try {
+            String insertSQL = "INSERT INTO payroll_table "
+                    + "(employee_id, employee_name, position, monthly_salary, total_present, total_absent, "
+                    + "total_hours_worked, standard_work_days, standard_hours, hourly_rate, regular_pay, ot_pay, "
+                    + "gross_pay, sss, philhealth, pagibig, late_deduct, absent_deduct, gov_contributions, "
+                    + "taxable_income, tax, total_deduct, net_pay, pay_period, prepared_by) "
+                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    + "ON DUPLICATE KEY UPDATE "
+                    + "employee_name=VALUES(employee_name), position=VALUES(position), monthly_salary=VALUES(monthly_salary), "
+                    + "total_present=VALUES(total_present), total_absent=VALUES(total_absent), "
+                    + "total_hours_worked=VALUES(total_hours_worked), standard_work_days=VALUES(standard_work_days), "
+                    + "standard_hours=VALUES(standard_hours), hourly_rate=VALUES(hourly_rate), regular_pay=VALUES(regular_pay), "
+                    + "ot_pay=VALUES(ot_pay), gross_pay=VALUES(gross_pay), sss=VALUES(sss), philhealth=VALUES(philhealth), "
+                    + "pagibig=VALUES(pagibig), late_deduct=VALUES(late_deduct), absent_deduct=VALUES(absent_deduct), "
+                    + "gov_contributions=VALUES(gov_contributions), taxable_income=VALUES(taxable_income), tax=VALUES(tax), "
+                    + "total_deduct=VALUES(total_deduct), net_pay=VALUES(net_pay), pay_period=VALUES(pay_period), "
+                    + "prepared_by=VALUES(prepared_by)";
+
+            PreparedStatement ps = connection.prepareStatement(insertSQL);
 
             ps.setInt(1, selectedEmployeeId);
             ps.setString(2, employeeName);
@@ -989,28 +990,30 @@ public class DashboardFrame extends javax.swing.JFrame {
             ps.setInt(8, totalWorkingDays);
             ps.setInt(9, standardMonthlyHours);
             ps.setDouble(10, hourlyRate);
-            ps.setDouble(11, grossPay);
-            ps.setDouble(12, sss);
-            ps.setDouble(13, philHealth);
-            ps.setDouble(14, pagibig);
-            ps.setDouble(15, taxableIncome);
-            ps.setDouble(16, tax);
-            ps.setDouble(17, totalDeductions);
-            ps.setDouble(18, netPay);
-            ps.setString(19, today.toString());
-            ps.setString(20, preparedByField.getText());
+            ps.setDouble(11, regularPay);
+            ps.setDouble(12, otPay);
+            ps.setDouble(13, grossPay);
+            ps.setDouble(14, sss);
+            ps.setDouble(15, philHealth);
+            ps.setDouble(16, pagibig);
+            ps.setDouble(17, lateDeduct);
+            ps.setDouble(18, absentDeduct);
+            ps.setDouble(19, govContributions);
+            ps.setDouble(20, taxableIncome);
+            ps.setDouble(21, tax);
+            ps.setDouble(22, totalDeduct);
+            ps.setDouble(23, netPay);
+            ps.setString(24, today.toString());
+            ps.setString(25, preparedByField.getText());
 
             ps.executeUpdate();
 
-            JOptionPane.showMessageDialog(this, "Payslip recorded!");
-
-            fetchPayroll();
+            JOptionPane.showMessageDialog(this, "Payslip recorded to payroll table!");
+            fetchPayroll(); // refresh table
 
         } catch (SQLException ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(null, "Error saving payroll: " + ex.getMessage());
+            JOptionPane.showMessageDialog(this, "Error saving payroll: " + ex.getMessage());
         }
-
     }
 
     public void loadComboBox() {

@@ -64,10 +64,9 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
         });
         timer.start();
 
-        startCamera();
-
         javax.swing.SwingUtilities.invokeLater(() -> employeeIdField.requestFocusInWindow());
 
+        startCamera();
     }
 
     private void startCamera() {
@@ -194,6 +193,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
             String employeeId = employeeIdField.getText();
             LocalDate today = LocalDate.now();
             LocalTime now = LocalTime.now();
+            String status = "";
 
             // Check if the employee_id is recorded
             PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM employees_table WHERE employee_id=?");
@@ -215,48 +215,151 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                 rs = pstmt.executeQuery();
 
                 if (!rs.next()) {
-                    String insertQuery = "INSERT INTO attendance_table (employee_id, date, time_in, status) VALUES (?, ?, ?, ?)";
-                    pstmt = connection.prepareStatement(insertQuery);
-                    pstmt.setString(1, employeeId);
-                    pstmt.setDate(2, java.sql.Date.valueOf(today));
-                    pstmt.setTime(3, java.sql.Time.valueOf(now));
-                    pstmt.setString(4, "Present");
-                    pstmt.executeUpdate();
-
-                    jLabel2.setText("Time In");
-                    statusLabel.setText("STATUS: Time In, " + time);
-                } else {
-                    Time timeIn = rs.getTime("time_in");
-                    Time timeOut = rs.getTime("time_out");
-
-                    if (timeOut == null) {
-                        // Compute total hours worked (minus 1 hr lunch break)
-                        LocalTime tIn = timeIn.toLocalTime();
-                        LocalTime tOut = now;
-                        double hoursWorked = java.time.Duration.between(tIn, tOut).toMinutes() / 60.0;
-
-                        // Deduct lunch break (12:00–13:00) if worked past 1PM
-                        if (tIn.isBefore(LocalTime.NOON) && tOut.isAfter(LocalTime.of(13, 0))) {
-                            hoursWorked -= 1.0;
+                    if (now.isBefore(LocalTime.NOON)) {
+                        if (now.isAfter(LocalTime.of(8, 15))) {
+                            status = "Late";
                         }
 
-                        // Handle if hours exceed 10 (duty limit)
-                        if (hoursWorked > 10) {
-                            hoursWorked = 10;
-                        }
-
-                        String updateQuery = "UPDATE attendance_table SET time_out=?, total_hours=? WHERE employee_id=? AND date=?";
-                        pstmt = connection.prepareStatement(updateQuery);
-                        pstmt.setTime(1, java.sql.Time.valueOf(now));
-                        pstmt.setDouble(2, hoursWorked);
-                        pstmt.setString(3, employeeId);
-                        pstmt.setDate(4, java.sql.Date.valueOf(today));
+                        String insertQuery = "INSERT INTO attendance_table (employee_id, date, am_time_in, am_status, status) VALUES (?, ?, ?, ?, ?)";
+                        pstmt = connection.prepareStatement(insertQuery);
+                        pstmt.setString(1, employeeId);
+                        pstmt.setDate(2, java.sql.Date.valueOf(today));
+                        pstmt.setTime(3, java.sql.Time.valueOf(now));
+                        pstmt.setString(4, status);
+                        pstmt.setString(5, "Present");
                         pstmt.executeUpdate();
 
-                        jLabel2.setText("Time Out");
-                        statusLabel.setText("STATUS: Time Out, " + time);
+                        jLabel2.setText("AM Time In");
+                        statusLabel.setText("STATUS: Time In, " + time + ", " + status);
                     } else {
-                        statusLabel.setText("STATUS: Already Timed Out!");
+                        if (now.isAfter(LocalTime.of(13, 15))) {
+                            status = "Late";
+                        }
+                        String insertQuery = "INSERT INTO attendance_table (employee_id, date, pm_time_in, pm_status, status) VALUES (?, ?, ?, ?, ?)";
+                        pstmt = connection.prepareStatement(insertQuery);
+                        pstmt.setString(1, employeeId);
+                        pstmt.setDate(2, java.sql.Date.valueOf(today));
+                        pstmt.setTime(3, java.sql.Time.valueOf(now));
+                        pstmt.setString(4, status);
+                        pstmt.setString(5, "Present");
+                        pstmt.executeUpdate();
+
+                        jLabel2.setText("PM Time In");
+                        statusLabel.setText("STATUS: Time In, " + time + ", " + status);
+                    }
+                } else {
+                    Time amTimeIn = rs.getTime("am_time_in");
+                    Time amTimeOut = rs.getTime("am_time_out");
+                    if (amTimeOut == null && amTimeIn != null && now.isBefore(LocalTime.of(13, 00))) {
+                        String updateQuery = "UPDATE attendance_table SET am_time_out=? WHERE employee_id=? AND date=?";
+                        pstmt = connection.prepareStatement(updateQuery);
+                        pstmt.setTime(1, java.sql.Time.valueOf(now));
+                        pstmt.setString(2, employeeId);
+                        pstmt.setDate(3, java.sql.Date.valueOf(today));
+                        pstmt.executeUpdate();
+
+                        jLabel2.setText("AM Time Out");
+                        statusLabel.setText("STATUS: Time Out, " + time + ", " + status);
+
+                        checkQuery = "SELECT * FROM attendance_table WHERE employee_id=? AND date=?";
+                        pstmt = connection.prepareStatement(checkQuery);
+                        pstmt.setString(1, employeeId);
+                        pstmt.setDate(2, java.sql.Date.valueOf(today));
+                        rs = pstmt.executeQuery();
+                        if (rs.next()) {
+                            amTimeIn = rs.getTime("am_time_in");
+                            amTimeOut = rs.getTime("am_time_out");
+
+                            // Compute am hours worked
+                            LocalTime amtIn = amTimeIn.toLocalTime();
+                            LocalTime amtOut = amTimeOut.toLocalTime();
+                            double amHoursWorked = java.time.Duration.between(amtIn, amtOut).toMinutes() / 60.0;
+
+                            // Compute total hours worked
+                            double totalHoursWork = amHoursWorked;
+
+                            updateQuery = "UPDATE attendance_table SET total_hours=? WHERE employee_id=? AND date=?";
+                            pstmt = connection.prepareStatement(updateQuery);
+                            pstmt.setDouble(1, totalHoursWork);
+                            pstmt.setString(2, employeeId);
+                            pstmt.setDate(3, java.sql.Date.valueOf(today));
+                            pstmt.executeUpdate();
+                        }
+                    } else {
+                        statusLabel.setText("STATUS: AM, Already Timed Out!");
+                    }
+                    if (now.isAfter(LocalTime.of(13, 00))) {
+                        Time pmTimeIn = rs.getTime("pm_time_in");
+                        if (pmTimeIn == null) {
+                            if (now.isAfter(LocalTime.of(13, 15))) {
+                                status = "Late";
+                            }
+
+                            String insertQuery = "UPDATE attendance_table SET pm_time_in=?, pm_status=? WHERE employee_id=? AND date=?";
+                            pstmt = connection.prepareStatement(insertQuery);
+                            pstmt.setTime(1, java.sql.Time.valueOf(now));
+                            pstmt.setString(2, status);
+                            pstmt.setString(3, employeeId);
+                            pstmt.setDate(4, java.sql.Date.valueOf(today));
+                            pstmt.executeUpdate();
+
+                            jLabel2.setText("PM Time In");
+                            statusLabel.setText("STATUS: Time In, " + time + ", " + status);
+                        } else {
+                            Time pmTimeOut = rs.getTime("pm_time_out");
+                            if (pmTimeOut == null) {
+                                String updateQuery = "UPDATE attendance_table SET pm_time_out=? WHERE employee_id=? AND date=?";
+                                pstmt = connection.prepareStatement(updateQuery);
+                                pstmt.setTime(1, java.sql.Time.valueOf(now));
+                                pstmt.setString(2, employeeId);
+                                pstmt.setDate(3, java.sql.Date.valueOf(today));
+                                pstmt.executeUpdate();
+
+                                jLabel2.setText("PM Time Out");
+                                statusLabel.setText("STATUS: Time Out, " + time + ", " + status);
+
+                                checkQuery = "SELECT * FROM attendance_table WHERE employee_id=? AND date=?";
+                                pstmt = connection.prepareStatement(checkQuery);
+                                pstmt.setString(1, employeeId);
+                                pstmt.setDate(2, java.sql.Date.valueOf(today));
+                                rs = pstmt.executeQuery();
+
+                                if (rs.next()) {
+                                    amTimeIn = rs.getTime("am_time_in");
+                                    amTimeOut = rs.getTime("am_time_out");
+                                    pmTimeIn = rs.getTime("pm_time_in");
+                                    pmTimeOut = rs.getTime("pm_time_out");
+
+                                    double amHoursWorked = 0;
+                                    if (amTimeIn != null && amTimeOut != null) {
+                                        // Compute am hours worked
+                                        LocalTime amtIn = amTimeIn.toLocalTime();
+                                        LocalTime amtOut = amTimeOut.toLocalTime();
+                                        amHoursWorked = java.time.Duration.between(amtIn, amtOut).toMinutes() / 60.0;
+                                    }
+
+                                    double pmHoursWorked = 0;
+                                    if (amTimeIn != null && amTimeOut != null) {
+                                        // Compute pm hours worked
+                                        LocalTime pmtIn = pmTimeIn.toLocalTime();
+                                        LocalTime pmtOut = pmTimeOut.toLocalTime();
+                                        pmHoursWorked = java.time.Duration.between(pmtIn, pmtOut).toMinutes() / 60.0;
+                                    }
+                                    
+                                    // Compute total hours worked
+                                    double totalHoursWork = amHoursWorked + pmHoursWorked;
+
+                                    updateQuery = "UPDATE attendance_table SET total_hours=? WHERE employee_id=? AND date=?";
+                                    pstmt = connection.prepareStatement(updateQuery);
+                                    pstmt.setDouble(1, totalHoursWork);
+                                    pstmt.setString(2, employeeId);
+                                    pstmt.setDate(3, java.sql.Date.valueOf(today));
+                                    pstmt.executeUpdate();
+                                }
+                            } else {
+                                statusLabel.setText("STATUS: PM, Already Timed Out!");
+                            }
+                        }
                     }
                 }
             } else {
@@ -274,6 +377,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
             timer.setRepeats(false);
             timer.start();
 
+            dashboard.loadComboBox();
             dashboard.fetchAttendanceList();
 
         } catch (NumberFormatException | SQLException ex) {

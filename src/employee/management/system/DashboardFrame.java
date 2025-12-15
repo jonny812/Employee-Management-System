@@ -127,6 +127,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         addButtonHoverEffects();
         // -------------------- DASHBOARD COUNTS --------------------
+        jLabel8.setText(today.toString());
         updateDashboardCounts(); // Initial update of Active / Inactive / Total
 
         jTextField3 = (JTextField) jComboBox2.getEditor().getEditorComponent();
@@ -259,8 +260,10 @@ public class DashboardFrame extends javax.swing.JFrame {
                         v2.add(rs.getString("employee_id"));
                         v2.add(rs.getString("full_name"));
                         v2.add(rs.getString("date"));
-                        v2.add(rs.getString("time_in"));
-                        v2.add(rs.getString("time_out"));
+                        v2.add(rs.getString("am_time_in"));
+                        v2.add(rs.getString("am_time_out"));
+                        v2.add(rs.getString("pm_time_in"));
+                        v2.add(rs.getString("pm_time_out"));
                         dtm.addRow(v2);
                     }
                 } catch (SQLException ex) {
@@ -391,10 +394,14 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "attendance_id INT AUTO_INCREMENT PRIMARY KEY, "
                     + "employee_id INT NOT NULL, "
                     + "date DATE NOT NULL, "
-                    + "time_in TIME, "
-                    + "time_out TIME, "
+                    + "am_time_in TIME, "
+                    + "am_time_out TIME, "
+                    + "pm_time_in TIME, "
+                    + "pm_time_out TIME, "
                     + "total_hours DECIMAL(5,2), "
-                    + "status VARCHAR(20) DEFAULT 'Present', "
+                    + "am_status VARCHAR(20), "
+                    + "pm_status VARCHAR(20), "
+                    + "status VARCHAR(20), "
                     + "FOREIGN KEY (employee_id) REFERENCES employees_table(employee_id) "
                     + "ON DELETE CASCADE ON UPDATE CASCADE)";
             stmt.execute(createAttendanceTable);
@@ -513,7 +520,8 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     public void fetchAttendanceList() {
         try (Connection connection = DatabaseConnection.getConnection()) {
-            PreparedStatement pstmt = connection.prepareStatement("SELECT employees_table.employee_id, employees_table.full_name, attendance_table.date, attendance_table.time_in, attendance_table.time_out "
+            PreparedStatement pstmt = connection.prepareStatement("SELECT employees_table.employee_id, employees_table.full_name, attendance_table.date, attendance_table.am_time_in, attendance_table.am_time_out, "
+                    + "attendance_table.pm_time_in, attendance_table.pm_time_out "
                     + "FROM employees_table LEFT JOIN attendance_table ON employees_table.employee_id = attendance_table.employee_id ORDER BY attendance_id DESC");
             ResultSet rs = pstmt.executeQuery();
             ResultSetMetaData rsmt = rs.getMetaData();
@@ -525,8 +533,10 @@ public class DashboardFrame extends javax.swing.JFrame {
                 v2.add(rs.getString("employee_id"));
                 v2.add(rs.getString("full_name"));
                 v2.add(rs.getString("date"));
-                v2.add(rs.getString("time_in"));
-                v2.add(rs.getString("time_out"));
+                v2.add(rs.getString("am_time_in"));
+                v2.add(rs.getString("am_time_out"));
+                v2.add(rs.getString("pm_time_in"));
+                v2.add(rs.getString("pm_time_out"));
                 dtm.addRow(v2);
             }
 
@@ -535,38 +545,13 @@ public class DashboardFrame extends javax.swing.JFrame {
             attendanceTable.setRowSorter(sorter);
 
             List<RowSorter.SortKey> sortKeys = new ArrayList<>();
-            sortKeys.add(new RowSorter.SortKey(2, SortOrder.DESCENDING)); // column 2 = Date
+            sortKeys.add(new RowSorter.SortKey(2, SortOrder.DESCENDING)); // column 3 = Date
             sorter.setSortKeys(sortKeys);
             sorter.sort();
 
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(null, "Fetching Failed!\n" + ex.getLocalizedMessage());
-        }
-    }
-
-    private void btnUploadActionPerformed(java.awt.event.ActionEvent evt) {
-        JFileChooser fileChooser = new JFileChooser();
-        fileChooser.setDialogTitle("Select Employee Photo");
-        fileChooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        fileChooser.setAcceptAllFileFilterUsed(false);
-        fileChooser.addChoosableFileFilter(new FileNameExtensionFilter("Image Files", "jpg", "png", "jpeg"));
-
-        int result = fileChooser.showOpenDialog(this);
-        if (result == JFileChooser.APPROVE_OPTION) {
-            java.io.File selectedFile = fileChooser.getSelectedFile();
-            imagePath = selectedFile.getAbsolutePath(); // ✅ class-level variable
-            if (lblPhotoPath != null) {
-                lblPhotoPath.setText(imagePath); // optional, can be hidden
-            }
-
-            if (lblPhotoPreview != null) {
-                ImageIcon imageIcon = new ImageIcon(
-                        new ImageIcon(imagePath).getImage()
-                                .getScaledInstance(lblPhotoPreview.getWidth(), lblPhotoPreview.getHeight(), Image.SCALE_SMOOTH)
-                );
-                lblPhotoPreview.setIcon(imageIcon);
-            }
         }
     }
 
@@ -781,13 +766,17 @@ public class DashboardFrame extends javax.swing.JFrame {
                 if (!qrDir.exists()) {
                     qrDir.mkdir();
                 }
-                int id = rs.getInt("employee_id");
+                int id = rs.getInt("employee_id") + 1;
                 String text = Integer.toString(id);
                 String filePath = "qrcodes/" + id + ".png";
                 BitMatrix matrix = new MultiFormatWriter().encode(text, BarcodeFormat.QR_CODE, 500, 500);
                 Path path = FileSystems.getDefault().getPath(filePath);
                 MatrixToImageWriter.writeToPath(matrix, "PNG", path);
                 System.out.println("QR Code created: " + filePath);
+
+                qrHolder.setIcon(new ImageIcon(new ImageIcon("qrcodes/" + id + ".png").getImage().getScaledInstance(120, 120, Image.SCALE_SMOOTH)));
+                qrHolder.setText("");
+
             }
 
         } catch (Exception ex) {
@@ -1014,9 +1003,9 @@ public class DashboardFrame extends javax.swing.JFrame {
             ResultSet rs = pstmt.executeQuery();
             jComboBox1.removeAllItems();
             while (rs.next()) {
-                jComboBox1.addItem(rs.getString(1));
+                jComboBox1.addItem(rs.getString("date"));
             }
-            jComboBox1.setSelectedIndex(-1);
+            jComboBox1.setSelectedItem(today);
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(this, "LoadComboBox Failed!\n" + ex.getMessage());
@@ -1025,11 +1014,11 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     public void loadEmployeeListComboBox() {
         try (Connection connection = DatabaseConnection.getConnection()) {
-            PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM attendance_table ORDER BY employee_id DESC");
+            PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM employees_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox.removeAllItems();
             while (rs.next()) {
-                jComboBox.addItem(rs.getString(1));
+                jComboBox.addItem(rs.getString("employee_id"));
             }
             jComboBox.setSelectedIndex(-1);
         } catch (SQLException ex) {
@@ -1044,7 +1033,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             ResultSet rs = pstmt.executeQuery();
             jComboBox2.removeAllItems();
             while (rs.next()) {
-                jComboBox2.addItem(rs.getString(1));
+                jComboBox2.addItem(rs.getString("employee_id"));
             }
             jComboBox2.setSelectedIndex(-1);
         } catch (SQLException ex) {
@@ -1239,6 +1228,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         panel3 = new javax.swing.JPanel();
         countTotal = new javax.swing.JLabel();
         jLabel5 = new javax.swing.JLabel();
+        jLabel8 = new javax.swing.JLabel();
         addEmployeePanel = new javax.swing.JPanel();
         name = new javax.swing.JLabel();
         txtName = new javax.swing.JTextField();
@@ -1339,7 +1329,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         backButton = new javax.swing.JButton();
         printButton = new javax.swing.JButton();
         recordButton = new javax.swing.JButton();
-        jPanel7 = new javax.swing.JPanel();
 
         jPopupMenu1.setBackground(new java.awt.Color(0, 153, 153));
         jPopupMenu1.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
@@ -1374,6 +1363,11 @@ public class DashboardFrame extends javax.swing.JFrame {
         setTitle("Employee Management System");
         setMinimumSize(new java.awt.Dimension(1000, 600));
         setPreferredSize(new java.awt.Dimension(1200, 700));
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosed(java.awt.event.WindowEvent evt) {
+                formWindowClosed(evt);
+            }
+        });
 
         jPanel1.setBackground(new java.awt.Color(0, 51, 51));
         jPanel1.setForeground(new java.awt.Color(0, 0, 0));
@@ -1621,7 +1615,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         jLabel3.setBackground(new java.awt.Color(255, 255, 255));
         jLabel3.setFont(new java.awt.Font("Bahnschrift", 1, 14)); // NOI18N
         jLabel3.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel3.setText("ACTIVE");
+        jLabel3.setText("PRESENT");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 1;
@@ -1649,7 +1643,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jLabel4.setFont(new java.awt.Font("Bahnschrift", 1, 14)); // NOI18N
         jLabel4.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel4.setText("INACTIVE");
+        jLabel4.setText("ABSENT");
         gridBagConstraints = new java.awt.GridBagConstraints();
         gridBagConstraints.gridx = 0;
         gridBagConstraints.gridy = 1;
@@ -1690,6 +1684,16 @@ public class DashboardFrame extends javax.swing.JFrame {
         gridBagConstraints.gridy = 1;
         gridBagConstraints.insets = new java.awt.Insets(10, 10, 10, 10);
         dashboardmain.add(panel3, gridBagConstraints);
+
+        jLabel8.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        jLabel8.setForeground(new java.awt.Color(51, 51, 51));
+        jLabel8.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        jLabel8.setText("DATE");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.gridwidth = 3;
+        dashboardmain.add(jLabel8, gridBagConstraints);
 
         jPanel3.add(dashboardmain, "card1");
 
@@ -1759,6 +1763,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnUploadPhoto.setText("UPLOAD  PHOTO");
         btnUploadPhoto.setBorder(javax.swing.BorderFactory.createBevelBorder(javax.swing.border.BevelBorder.RAISED));
         btnUploadPhoto.setBorderPainted(false);
+        btnUploadPhoto.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnUploadPhoto.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnUploadPhotoActionPerformed(evt);
@@ -1806,6 +1811,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnADD.setBackground(new java.awt.Color(0, 204, 102));
         btnADD.setForeground(new java.awt.Color(204, 255, 255));
         btnADD.setText("ADD");
+        btnADD.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnADD.setFocusable(false);
         btnADD.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -1816,6 +1822,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnCLEAR.setBackground(new java.awt.Color(13, 148, 136));
         btnCLEAR.setForeground(new java.awt.Color(204, 255, 255));
         btnCLEAR.setText("CLEAR");
+        btnCLEAR.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnCLEAR.setFocusable(false);
         btnCLEAR.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -1826,6 +1833,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnCANCEL.setBackground(new java.awt.Color(239, 68, 68));
         btnCANCEL.setForeground(new java.awt.Color(204, 255, 255));
         btnCANCEL.setText("CANCEL");
+        btnCANCEL.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnCANCEL.setEnabled(false);
         btnCANCEL.setFocusable(false);
         btnCANCEL.addActionListener(new java.awt.event.ActionListener() {
@@ -1851,6 +1859,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnSAVE1.setBackground(new java.awt.Color(0, 204, 102));
         btnSAVE1.setForeground(new java.awt.Color(204, 255, 255));
         btnSAVE1.setText("SAVE");
+        btnSAVE1.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnSAVE1.setEnabled(false);
         btnSAVE1.setFocusable(false);
         btnSAVE1.addActionListener(new java.awt.event.ActionListener() {
@@ -2003,6 +2012,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnExport.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
         btnExport.setForeground(new java.awt.Color(255, 255, 255));
         btnExport.setText("SAVE");
+        btnExport.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnExport.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnExportActionPerformed(evt);
@@ -2036,17 +2046,17 @@ public class DashboardFrame extends javax.swing.JFrame {
         attendanceTable.setForeground(new java.awt.Color(0, 0, 0));
         attendanceTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null}
+                {null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null},
+                {null, null, null, null, null, null, null}
             },
             new String [] {
-                "Employee ID", "Full Name", "Date", "Time In", "Time Out"
+                "Employee ID", "Full Name", "Date", "AM Time In", "AM Time Out", "PM Time In", "PM Time Out"
             }
         ) {
             boolean[] canEdit = new boolean [] {
-                false, false, false, false, false
+                false, false, false, false, false, false, false
             };
 
             public boolean isCellEditable(int rowIndex, int columnIndex) {
@@ -2771,21 +2781,6 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jPanel3.add(generatePayslip, "card7");
 
-        jPanel7.setBackground(new java.awt.Color(255, 255, 255));
-
-        javax.swing.GroupLayout jPanel7Layout = new javax.swing.GroupLayout(jPanel7);
-        jPanel7.setLayout(jPanel7Layout);
-        jPanel7Layout.setHorizontalGroup(
-            jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 848, Short.MAX_VALUE)
-        );
-        jPanel7Layout.setVerticalGroup(
-            jPanel7Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGap(0, 600, Short.MAX_VALUE)
-        );
-
-        jPanel3.add(jPanel7, "card9");
-
         jPanel1.add(jPanel3, java.awt.BorderLayout.CENTER);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
@@ -2997,6 +2992,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         // TODO add your handling code here:
         card.show(jPanel3, "card2");
         clearFields();
+        generateQr();
 
         btnADD.setEnabled(true);
         btnSAVE1.setEnabled(false);
@@ -3020,6 +3016,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private void jButton4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton4ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card1");
+        jLabel8.setText(today.toString());
         updateDashboardCounts();
         this.revalidate();
         this.repaint();
@@ -3470,6 +3467,13 @@ public class DashboardFrame extends javax.swing.JFrame {
         updateEmployee(selectedEmployeeId);
     }//GEN-LAST:event_btnSAVE1ActionPerformed
 
+    private void formWindowClosed(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosed
+        // TODO add your handling code here:
+        timeInOut.webcam.close();
+        timeInOut.timer.stop();
+        timeInOut.dispose();
+    }//GEN-LAST:event_formWindowClosed
+
     private void addButtonHoverEffects() {
         // lahat ng buttons mo lagay dito
         simpleHover(jButton1);
@@ -3577,13 +3581,13 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel5;
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
+    private javax.swing.JLabel jLabel8;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
     public javax.swing.JPanel jPanel3;
     private javax.swing.JPanel jPanel4;
     private javax.swing.JPanel jPanel5;
     private javax.swing.JPanel jPanel6;
-    private javax.swing.JPanel jPanel7;
     private javax.swing.JPanel jPanel8;
     private javax.swing.JPopupMenu jPopupMenu1;
     private javax.swing.JScrollPane jScrollPane1;

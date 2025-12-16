@@ -406,20 +406,50 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "ON DELETE CASCADE ON UPDATE CASCADE)";
             stmt.execute(createAttendanceTable);
 
+            // -------------------- TAX BRACKETS TABLE --------------------
+            String createTaxBracketsTable = "CREATE TABLE IF NOT EXISTS tax_brackets ("
+                    + "bracket_id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "min_income DOUBLE NOT NULL, "
+                    + "max_income DOUBLE NOT NULL, "
+                    + "tax_rate DOUBLE NOT NULL, "
+                    + "base_tax DOUBLE DEFAULT 0, "
+                    + "UNIQUE(min_income, max_income))";
+            stmt.execute(createTaxBracketsTable);
+
+            // Insert default tax brackets
+            String insertBrackets = "INSERT IGNORE INTO tax_brackets (min_income, max_income, tax_rate, base_tax) VALUES "
+                    + "(0, 20833, 0, 0), "
+                    + "(20833. 01, 33333, 0.15, 0), "
+                    + "(33333.01, 66666, 0.20, 2500), "
+                    + "(66666.01, 166666, 0.25, 10833. 33), "
+                    + "(166666.01, 666666, 0.30, 40833.33), "
+                    + "(666666.01, 999999999, 0.35, 200833.33)";
+            stmt.execute(insertBrackets);
+
+            // -------------------- DEDUCTIONS TABLE --------------------
+            String createDeductionsTable = "CREATE TABLE IF NOT EXISTS deductions_table ("
+                    + "deduction_id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "taxable_income DOUBLE, "
+                    + "sss DOUBLE, "
+                    + "philhealth DOUBLE, "
+                    + "pagibig DOUBLE, "
+                    + "tax DOUBLE)";
+            stmt.execute(createDeductionsTable);
+
+            // -------------------- TRIGGER TO CALCULATE TAX --------------------
+            String createTaxTrigger = "CREATE TRIGGER IF NOT EXISTS calculate_tax_trigger "
+                    + "BEFORE INSERT ON payroll_table "
+                    + "FOR EACH ROW "
+                    + "BEGIN "
+                    + "  SELECT (base_tax + (NEW.taxable_income - min_income) * tax_rate) INTO @calculated_tax "
+                    + "  FROM tax_brackets "
+                    + "  WHERE NEW.taxable_income >= min_income AND NEW. taxable_income <= max_income "
+                    + "  LIMIT 1; "
+                    + "  SET NEW.tax = COALESCE(@calculated_tax, 0); "
+                    + "END";
+            stmt.execute(createTaxTrigger);
+
             // -------------------- PAYROLL TABLE --------------------
-//            String createPayrollTable = "CREATE TABLE IF NOT EXISTS payroll_table ("
-//                    + "payroll_id INT AUTO_INCREMENT PRIMARY KEY, "
-//                    + "employee_id INT NOT NULL, "
-//                    + "total_working_days INT NOT NULL, "
-//                    + "absent_days INT NOT NULL, "
-//                    + "daily_rate DECIMAL(10,2) NOT NULL, "
-//                    + "absence_deduction DECIMAL(10,2) NOT NULL, "
-//                    + "net_pay DECIMAL(10,2) NOT NULL, "
-//                    + "pay_period VARCHAR(50) NOT NULL, "
-//                    + "pay_date DATE DEFAULT CURRENT_DATE, "
-//                    + "FOREIGN KEY (employee_id) REFERENCES employees_table(employee_id) "
-//                    + "ON DELETE CASCADE ON UPDATE CASCADE)";
-//            stmt.execute(createPayrollTable);
             String createPayrollTable = "CREATE TABLE IF NOT EXISTS payroll_table ("
                     + "id INT AUTO_INCREMENT PRIMARY KEY, "
                     + "employee_id INT UNIQUE NOT NULL, "
@@ -441,10 +471,10 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "total_deduction DOUBLE, "
                     + "net_pay DOUBLE, "
                     + "pay_period VARCHAR(50), "
-                    + "prepared_by VARCHAR(100)"
-                    + ")";
+                    + "prepared_by VARCHAR(100))";
             stmt.execute(createPayrollTable);
-
+            
+            connection.close();
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(null, "Database Connecting Failed!\n" + ex.getLocalizedMessage());
@@ -1310,6 +1340,11 @@ public class DashboardFrame extends javax.swing.JFrame {
         removeButton = new javax.swing.JButton();
         updateButton = new javax.swing.JButton();
         clearSelectionButton = new javax.swing.JButton();
+        manageDeductions = new javax.swing.JPanel();
+        jLabel9 = new javax.swing.JLabel();
+        jLabel10 = new javax.swing.JLabel();
+        jTextField4 = new javax.swing.JTextField();
+        jTextField5 = new javax.swing.JTextField();
         database = new javax.swing.JPanel();
         resetDatabaseButton = new javax.swing.JButton();
         generatePayslip = new javax.swing.JPanel();
@@ -2605,6 +2640,49 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jTabbedPane1.addTab("Manage Users", manageUsersPanel);
 
+        manageDeductions.setBackground(new java.awt.Color(26, 0, 51));
+
+        jLabel9.setText("jLabel9");
+
+        jLabel10.setText("jLabel10");
+
+        jTextField4.setText("jTextField4");
+
+        jTextField5.setText("jTextField5");
+
+        javax.swing.GroupLayout manageDeductionsLayout = new javax.swing.GroupLayout(manageDeductions);
+        manageDeductions.setLayout(manageDeductionsLayout);
+        manageDeductionsLayout.setHorizontalGroup(
+            manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(manageDeductionsLayout.createSequentialGroup()
+                .addGap(117, 117, 117)
+                .addGroup(manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addGroup(manageDeductionsLayout.createSequentialGroup()
+                        .addComponent(jLabel10)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(manageDeductionsLayout.createSequentialGroup()
+                        .addComponent(jLabel9)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addContainerGap(459, Short.MAX_VALUE))
+        );
+        manageDeductionsLayout.setVerticalGroup(
+            manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(manageDeductionsLayout.createSequentialGroup()
+                .addGap(56, 56, 56)
+                .addGroup(manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jLabel9)
+                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(18, 18, 18)
+                .addGroup(manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jLabel10)
+                    .addComponent(jTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(336, Short.MAX_VALUE))
+        );
+
+        jTabbedPane1.addTab("Manage Deductions", manageDeductions);
+
         database.setBackground(new java.awt.Color(26, 0, 51));
         database.setLayout(new java.awt.GridBagLayout());
 
@@ -3575,6 +3653,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
     private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
@@ -3582,6 +3661,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
     private javax.swing.JLabel jLabel8;
+    private javax.swing.JLabel jLabel9;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
     public javax.swing.JPanel jPanel3;
@@ -3599,6 +3679,9 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JTextField jTextField1;
     private javax.swing.JTextField jTextField2;
     private javax.swing.JTextField jTextField3;
+    private javax.swing.JTextField jTextField4;
+    private javax.swing.JTextField jTextField5;
+    private javax.swing.JPanel manageDeductions;
     private javax.swing.JPanel manageUsersPanel;
     private javax.swing.JCheckBox manageUsersShowPassword;
     private javax.swing.JPanel moreInfoPanel;

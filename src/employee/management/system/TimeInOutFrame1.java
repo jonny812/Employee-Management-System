@@ -14,6 +14,7 @@ import java.awt.Dimension;
 import java.awt.HeadlessException;
 import java.awt.Image;
 import java.awt.image.BufferedImage;
+import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
@@ -26,6 +27,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.swing.ImageIcon;
 import javax.swing.JOptionPane;
 import javax.swing.Timer;
@@ -189,33 +191,41 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
     }
 
     public void timeInOut() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String employeeId = employeeIdField.getText();
             LocalDate today = LocalDate.now();
             LocalTime now = LocalTime.now();
 
-            // Check if the employee_id is recorded
-            PreparedStatement pstmt = dashboard.connection.prepareStatement("SELECT * FROM employees_table WHERE employee_id=?");
+            // Check if the employee_id exists
+            PreparedStatement pstmt = connection.prepareStatement(
+                    "SELECT * FROM employees_table WHERE employee_id=?"
+            );
             pstmt.setString(1, employeeId);
             ResultSet rs = pstmt.executeQuery();
 
             if (rs.next()) {
                 String photoPath = rs.getString("photo_path");
                 String name = rs.getString("full_name");
+                double monthlySalary = rs.getDouble("salary");
+                String position = rs.getString("position");
+
                 nameLabel.setText(name);
-                photoLabel.setIcon(new ImageIcon(new ImageIcon(photoPath).getImage().getScaledInstance(149, 149, Image.SCALE_SMOOTH)));
+                photoLabel.setIcon(new ImageIcon(
+                        new ImageIcon(photoPath).getImage().getScaledInstance(149, 149, Image.SCALE_SMOOTH)
+                ));
                 photoLabel.setText("");
 
                 // Check if already timed in today
                 String checkQuery = "SELECT * FROM attendance_table WHERE employee_id=? AND date=?";
-                pstmt = dashboard.connection.prepareStatement(checkQuery);
+                pstmt = connection.prepareStatement(checkQuery);
                 pstmt.setString(1, employeeId);
                 pstmt.setDate(2, java.sql.Date.valueOf(today));
                 rs = pstmt.executeQuery();
 
                 if (!rs.next()) {
+                    // Time In
                     String insertQuery = "INSERT INTO attendance_table (employee_id, date, time_in, status) VALUES (?, ?, ?, ?)";
-                    pstmt = dashboard.connection.prepareStatement(insertQuery);
+                    pstmt = connection.prepareStatement(insertQuery);
                     pstmt.setString(1, employeeId);
                     pstmt.setDate(2, java.sql.Date.valueOf(today));
                     pstmt.setTime(3, java.sql.Time.valueOf(now));
@@ -223,29 +233,52 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                     pstmt.executeUpdate();
 
                     jLabel2.setText("Time In");
-                    statusLabel.setText("STATUS: Time In, " + time);
+                    statusLabel.setText("STATUS: Time In, " + now.format(DateTimeFormatter.ofPattern("hh:mm:ss a")));
+
                 } else {
                     Time timeIn = rs.getTime("time_in");
                     Time timeOut = rs.getTime("time_out");
 
                     if (timeOut == null) {
-                        // Compute total hours worked (minus 1 hr lunch break)
+                        // Calculate worked hours
                         LocalTime tIn = timeIn.toLocalTime();
                         LocalTime tOut = now;
+
                         double hoursWorked = java.time.Duration.between(tIn, tOut).toMinutes() / 60.0;
 
-                        // Deduct lunch break (12:00–13:00) if worked past 1PM
+                        // Deduct lunch break (12:00–13:00) if applicable
                         if (tIn.isBefore(LocalTime.NOON) && tOut.isAfter(LocalTime.of(13, 0))) {
                             hoursWorked -= 1.0;
                         }
 
-                        // Handle if hours exceed 10 (duty limit)
-                        if (hoursWorked > 10) {
-                            hoursWorked = 10;
-                        }
+                        // Daily standard hours
+                        double standardHours = 8.0;
+                        double hourlyRate = monthlySalary / (22 * standardHours); // assuming 22 workdays/month
 
+                        double regularPay = Math.min(hoursWorked, standardHours) * hourlyRate;
+                        double otPay = Math.max(0, hoursWorked - standardHours) * hourlyRate * 1.25;
+
+                        // Late deduction (if time in > 8AM)
+                        double lateDeduct = Math.max(0, java.time.Duration.between(LocalTime.of(8, 0), tIn).toMinutes() / 60.0) * hourlyRate;
+
+                        // Absent deduction (if total hours < standardHours)
+                        double absentDeduct = Math.max(0, standardHours - hoursWorked) * hourlyRate;
+
+                        // Gross and deductions
+                        double grossPay = regularPay + otPay;
+                        double sss = monthlySalary * 0.05;
+                        double philHealth = monthlySalary * 0.025;
+                        double pagibig = Math.min(monthlySalary, 10000) * 0.02;
+                        double govContributions = sss + philHealth + pagibig;
+
+                        double taxableIncome = grossPay - govContributions;
+                        double tax = computeWithholdingTaxMonthly(taxableIncome);
+                        double totalDeduct = govContributions + tax + absentDeduct + lateDeduct;
+                        double netPay = grossPay - totalDeduct;
+
+                        // Update attendance
                         String updateQuery = "UPDATE attendance_table SET time_out=?, total_hours=? WHERE employee_id=? AND date=?";
-                        pstmt = dashboard.connection.prepareStatement(updateQuery);
+                        pstmt = connection.prepareStatement(updateQuery);
                         pstmt.setTime(1, java.sql.Time.valueOf(now));
                         pstmt.setDouble(2, hoursWorked);
                         pstmt.setString(3, employeeId);
@@ -253,7 +286,65 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                         pstmt.executeUpdate();
 
                         jLabel2.setText("Time Out");
-                        statusLabel.setText("STATUS: Time Out, " + time);
+                        statusLabel.setText("STATUS: Time Out, " + now.format(DateTimeFormatter.ofPattern("hh:mm:ss a")));
+
+                        // -------------------------
+                        // PAYROLL UPDATE (Monthly Cumulative)
+                        // -------------------------
+                        String payPeriod = today.getMonth() + " " + today.getYear();
+
+                        // Check if payroll exists
+                        String checkPayroll = "SELECT * FROM payroll_table WHERE employee_id=? AND pay_period=?";
+                        PreparedStatement checkStmt = connection.prepareStatement(checkPayroll);
+                        checkStmt.setString(1, employeeId);
+                        checkStmt.setString(2, payPeriod);
+                        ResultSet rsPayroll = checkStmt.executeQuery();
+
+                        if (rsPayroll.next()) {
+                            // UPDATE cumulative payroll
+                            String updatePayroll = "UPDATE payroll_table SET "
+                                    + "regular_pay = regular_pay + ?, "
+                                    + "ot_pay = ot_pay + ?, "
+                                    + "late_deduct = late_deduct + ?, "
+                                    + "absent_deduct = absent_deduct + ?, "
+                                    + "gross_pay = gross_pay + ?, "
+                                    + "gov_contributions = gov_contributions + ?, "
+                                    + "total_deduct = total_deduct + ?, "
+                                    + "net_pay = net_pay + ? "
+                                    + "WHERE employee_id=? AND pay_period=?";
+                            PreparedStatement pstmtUpdate = connection.prepareStatement(updatePayroll);
+                            pstmtUpdate.setDouble(1, regularPay);
+                            pstmtUpdate.setDouble(2, otPay);
+                            pstmtUpdate.setDouble(3, lateDeduct);
+                            pstmtUpdate.setDouble(4, absentDeduct);
+                            pstmtUpdate.setDouble(5, grossPay);
+                            pstmtUpdate.setDouble(6, govContributions);
+                            pstmtUpdate.setDouble(7, totalDeduct);
+                            pstmtUpdate.setDouble(8, netPay);
+                            pstmtUpdate.setString(9, employeeId);
+                            pstmtUpdate.setString(10, payPeriod);
+                            pstmtUpdate.executeUpdate();
+                        } else {
+                            // INSERT new payroll row
+                            String insertPayroll = "INSERT INTO payroll_table (employee_id, employee_name, position, "
+                                    + "regular_pay, ot_pay, late_deduct, absent_deduct, gross_pay, gov_contributions, "
+                                    + "total_deduct, net_pay, pay_period) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                            PreparedStatement pstmtInsert = connection.prepareStatement(insertPayroll);
+                            pstmtInsert.setString(1, employeeId);
+                            pstmtInsert.setString(2, name);
+                            pstmtInsert.setString(3, position);
+                            pstmtInsert.setDouble(4, regularPay);
+                            pstmtInsert.setDouble(5, otPay);
+                            pstmtInsert.setDouble(6, lateDeduct);
+                            pstmtInsert.setDouble(7, absentDeduct);
+                            pstmtInsert.setDouble(8, grossPay);
+                            pstmtInsert.setDouble(9, govContributions);
+                            pstmtInsert.setDouble(10, totalDeduct);
+                            pstmtInsert.setDouble(11, netPay);
+                            pstmtInsert.setString(12, payPeriod);
+                            pstmtInsert.executeUpdate();
+                        }
+
                     } else {
                         statusLabel.setText("STATUS: Already Timed Out!");
                     }
@@ -263,15 +354,16 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                 statusLabel.setText("STATUS: No Record Found!");
             }
 
-            javax.swing.Timer timer = new javax.swing.Timer(3500, e -> {
+            // Reset fields after 3.5s
+            javax.swing.Timer resetTimer = new javax.swing.Timer(3500, e -> {
                 employeeIdField.setText("");
                 nameLabel.setText("NAME");
                 photoLabel.setIcon(null);
                 photoLabel.setText("PHOTO");
                 statusLabel.setText("STATUS:");
             });
-            timer.setRepeats(false);
-            timer.start();
+            resetTimer.setRepeats(false);
+            resetTimer.start();
 
             dashboard.fetchAttendanceList();
 
@@ -280,7 +372,31 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
             JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
         }
     }
+    private static double computeWithholdingTaxMonthly(double taxableIncome) {
+        // Based on 2025 TRAIN withholding tax table (monthly income)
+        // 0 – 20,833: 0%
+        // 20,833.01 – 33,333: 15% of excess over 20,833
+        // 33,333.01 – 66,666: 2,500 + 20% of excess over 33,333
+        // 66,666.01 – 166,666: 10,833.33 + 25% of excess over 66,666
+        // 166,666.01 – 666,666: 40,833.33 + 30% of excess over 166,666
+        // above 666,666: 200,833.33 + 35% of excess over 666,666
 
+        double tax = 0.0;
+        if (taxableIncome <= 20833) {
+            tax = 0;
+        } else if (taxableIncome <= 33333) {
+            tax = (taxableIncome - 20833) * 0.15;
+        } else if (taxableIncome <= 66666) {
+            tax = 2500 + (taxableIncome - 33333) * 0.20;
+        } else if (taxableIncome <= 166666) {
+            tax = 10833.33 + (taxableIncome - 66666) * 0.25;
+        } else if (taxableIncome <= 666666) {
+            tax = 40833.33 + (taxableIncome - 166666) * 0.30;
+        } else {
+            tax = 200833.33 + (taxableIncome - 666666) * 0.35;
+        }
+        return tax;
+    }
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always

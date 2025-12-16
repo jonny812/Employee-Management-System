@@ -55,15 +55,20 @@ import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import java.time.LocalTime;
+import java.time.Duration;
+import java.time.LocalDate;
 
 public class DashboardFrame extends javax.swing.JFrame {
 
     private javax.swing.JLabel lblPhotoPreview;
     private javax.swing.JLabel lblPhotoPath;
+    private Connection connection;
+
+    boolean TEST_MODE = true; // 🔥 SET TRUE FOR DEMO, FALSE FOR REAL
 
     Preferences prefs = Preferences.userRoot().node("EmployeeManagementSystem.Preferences");
 
-    Connection connection;
     String imagePath = null;
     File selectedFile;
     int selectedEmployeeId; // to store the selected employee for editing
@@ -98,6 +103,13 @@ public class DashboardFrame extends javax.swing.JFrame {
     double tax = 0.0;
     double totalDeductions = 0.0;
     double netPay = 0.0;
+    // Additional payroll fields
+    double regularPay = 0.0;
+    double otPay = 0.0;
+    double lateDeduct = 0.0;
+    double absentDeduct = 0.0;
+    double govContributions = 0.0;
+    double totalDeduct = 0.0;
 
     String employeeName = "";
     String position = "";
@@ -150,8 +162,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             private void searchAction() {
                 String text = jTextField3.getText().trim();
 
-                try {
-                    connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
+                try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM payroll_table WHERE (employee_id LIKE ? OR employee_name LIKE ? OR position LIKE ?) ORDER BY employee_id DESC";
                     PreparedStatement pstmt = connection.prepareStatement(sql);
                     pstmt.setString(1, "%" + text + "%");
@@ -195,8 +206,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             private void searchAction() {
                 String text = jTextField1.getText().trim();
 
-                try {
-                    connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
+                try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM employees_table WHERE (employee_id LIKE ? OR full_name LIKE ? OR position LIKE ? OR department LIKE ?) ORDER BY employee_id DESC";
                     PreparedStatement pstmt = connection.prepareStatement(sql);
                     pstmt.setString(1, "%" + text + "%");
@@ -242,8 +252,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             private void searchAction() {
                 String text = jTextField2.getText().trim();
 
-                try {
-                    connection = DriverManager.getConnection("jdbc:mysql://localhost/employee_management_database", "root", "");
+                try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM employees_table "
                             + "LEFT JOIN attendance_table ON employees_table.employee_id = attendance_table.employee_id "
                             + "WHERE employees_table.employee_id LIKE ? "
@@ -301,7 +310,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     // ------------------- NEW METHOD -------------------
 
     private void updateDashboardCounts() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             // Total employees
             PreparedStatement totalStmt = connection.prepareStatement(
                     "SELECT COUNT(*) FROM employees_table"
@@ -334,13 +343,12 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     public void Connect() {
         try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
-            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/", "root", "");
+            Connection connection = DatabaseConnection.getRootConnection();
             Statement stmt = connection.createStatement();
 
             stmt.execute("CREATE DATABASE IF NOT EXISTS employee_management_database");
 
-            connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "");
+            connection = DatabaseConnection.getConnection();
             stmt = connection.createStatement();
 
             // -------------------- USERS TABLE --------------------
@@ -438,12 +446,18 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "tax DOUBLE, "
                     + "total_deduction DOUBLE, "
                     + "net_pay DOUBLE, "
+                    + "regular_pay DOUBLE, "
+                    + "ot_pay DOUBLE, "
+                    + "late_deduct DOUBLE, "
+                    + "absent_deduct DOUBLE, "
+                    + "gov_contributions DOUBLE, "
+                    + "total_deduct DOUBLE, "
                     + "pay_period VARCHAR(50), "
                     + "prepared_by VARCHAR(100)"
                     + ")";
             stmt.execute(createPayrollTable);
 
-        } catch (ClassNotFoundException | SQLException ex) {
+        } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(null, "Database Connecting Failed!\n" + ex.getLocalizedMessage());
             System.exit(0);
@@ -451,41 +465,52 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchPayroll() {
-        try {
-            PreparedStatement pstmt = connection.prepareStatement(
-                    "SELECT employee_id, employee_name, position, net_pay, pay_period FROM payroll_table"
-            );
+
+        try (Connection connection = DatabaseConnection.getConnection()) {
+
+            String sql = "SELECT employee_id, employee_name, position, "
+                    + "regular_pay, ot_pay, late_deduct, absent_deduct, "
+                    + "gov_contributions, total_deduct, net_pay, pay_period "
+                    + "FROM payroll_table";
+
+            PreparedStatement pstmt = connection.prepareStatement(sql);
             ResultSet rs = pstmt.executeQuery();
 
             DefaultTableModel dtm = (DefaultTableModel) payrollTable.getModel();
             dtm.setRowCount(0);
 
             while (rs.next()) {
-                Vector v = new Vector();
+                Vector<Object> v = new Vector<>();
                 v.add(rs.getInt("employee_id"));
                 v.add(rs.getString("employee_name"));
                 v.add(rs.getString("position"));
+                v.add(rs.getDouble("regular_pay"));
+                v.add(rs.getDouble("ot_pay"));
+                v.add(rs.getDouble("late_deduct"));
+                v.add(rs.getDouble("absent_deduct"));
+                v.add(rs.getDouble("gov_contributions"));
+                v.add(rs.getDouble("total_deduct"));
                 v.add(rs.getDouble("net_pay"));
                 v.add(rs.getString("pay_period"));
                 dtm.addRow(v);
             }
 
-            // Auto descending order based on "id"
+            // Sort by Employee ID DESC
             TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(dtm);
             payrollTable.setRowSorter(sorter);
-            List<RowSorter.SortKey> sortKeys = new ArrayList<>();
-            sortKeys.add(new RowSorter.SortKey(0, SortOrder.DESCENDING));
-            sorter.setSortKeys(sortKeys);
-            sorter.sort();
+            sorter.setSortKeys(List.of(
+                    new RowSorter.SortKey(0, SortOrder.DESCENDING)
+            ));
 
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
-            JOptionPane.showMessageDialog(null, "Fetching Payroll Failed!\n" + ex.getLocalizedMessage());
+            JOptionPane.showMessageDialog(null,
+                    "Fetching Payroll Failed!\n" + ex.getMessage());
         }
     }
 
     public void fetch() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement(
                     "SELECT employee_id, full_name, position, department FROM employees_table"
             );
@@ -517,7 +542,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchAttendanceList() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT employees_table.employee_id, employees_table.full_name, attendance_table.date, attendance_table.time_in, attendance_table.time_out "
                     + "FROM employees_table LEFT JOIN attendance_table ON employees_table.employee_id = attendance_table.employee_id ORDER BY attendance_id DESC");
             ResultSet rs = pstmt.executeQuery();
@@ -612,7 +637,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void fetchTheUser() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT user_id, username FROM users_table ORDER BY user_id DESC");
             ResultSet rs = pstmt.executeQuery();
 
@@ -633,7 +658,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     public void fetchUser() {
         String savedUser = prefs.get("rememberedUser", null);
         if (savedUser != null) {
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM users_table WHERE username = ?");
                 pstmt.setString(1, savedUser);
 
@@ -651,7 +676,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void changePassword() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String currentPassword = new String(currentPasswordField.getPassword());
             String newPassword = new String(newPasswordField.getPassword());
             String confirmPassword = new String(confirmPasswordField.getPassword());
@@ -694,7 +719,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         if (username.isEmpty() || password.isEmpty()) {
             JOptionPane.showMessageDialog(this, "All Field Must be Field Out!");
         } else {
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("INSERT INTO users_table (admin, username, password) VALUES (1, ?, ?) ");
                 pstmt.setString(1, username);
                 pstmt.setString(2, password);
@@ -722,7 +747,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         if (username.isEmpty() || password.isEmpty()) {
             JOptionPane.showMessageDialog(this, "All Field Must be Field Out!");
         } else {
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("UPDATE users_table SET username = ?, password = ? WHERE user_id = ?");
                 pstmt.setString(1, username);
                 pstmt.setString(2, password);
@@ -746,7 +771,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         selectedUserId = Integer.parseInt(usersTable.getValueAt(row, 0).toString());
         if (JOptionPane.showConfirmDialog(this, "Are you sure you want to Remove this User?", "Confirmation",
                 JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("DELETE FROM users_table WHERE user_id = ?");
                 pstmt.setInt(1, selectedUserId);
                 pstmt.executeUpdate();
@@ -778,7 +803,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void generateQr() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             Statement stmt = connection.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT employee_id FROM employees_table ORDER BY employee_id DESC LIMIT 1");
             if (rs.next()) {
@@ -828,193 +853,181 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void GeneratePaySlip() {
-
         int row = employeesTable.getSelectedRow();
         if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Please select an employee to edit!");
+            JOptionPane.showMessageDialog(this, "Please select an employee!");
             return;
         }
 
-        int id = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
-        selectedEmployeeId = id; // store globally
+        selectedEmployeeId = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
 
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
+
             String startDate = startDateField.getText();
             String endDate = endDateField.getText();
 
-            // Define payroll period
-//            String payPeriod = today.getYear() + "-" + today.getMonth() + "-" + startOfMonth.getDayOfMonth() + "-" + endOfMonth.getDayOfMonth();
-            // Select employee
-            String empQuery = "SELECT full_name, position, salary FROM employees_table WHERE employee_id = ?";
-            PreparedStatement pstmt = connection.prepareStatement(empQuery);
-            pstmt.setInt(1, id);
-            ResultSet rs = pstmt.executeQuery();
+            // ===============================
+            // FETCH EMPLOYEE INFO
+            // ===============================
+            String empSQL = "SELECT full_name, position, salary FROM employees_table WHERE employee_id=?";
+            PreparedStatement empPS = connection.prepareStatement(empSQL);
+            empPS.setInt(1, selectedEmployeeId);
+            ResultSet empRS = empPS.executeQuery();
 
-            if (rs.next()) {
-                employeeName = rs.getString("full_name");
-                position = rs.getString("position");
-                monthlySalary = rs.getDouble("salary");
-
-                totalWorkingDays = 0;
-                if (!totalWorkDaysField.getText().isEmpty()) {
-                    totalWorkingDays = Integer.parseInt(totalWorkDaysField.getText());
-                }
-
-                // Count total present and absent days from attendance
-                String countPresentQuery = "SELECT COUNT(*) AS total_present FROM attendance_table "
-                        + "WHERE employee_id=? AND date BETWEEN ? AND ? AND status='Present'";
-                pstmt = connection.prepareStatement(countPresentQuery);
-                pstmt.setInt(1, id);
-                pstmt.setString(2, startDate);
-                pstmt.setString(3, endDate);
-                rs = pstmt.executeQuery();
-
-                totalPresent = 0;
-                if (rs.next()) {
-                    totalPresent = rs.getInt("total_present");
-                }
-
-                absentDays = totalWorkingDays - totalPresent;
-                if (absentDays < 0) {
-                    absentDays = 0;
-                }
-
-                // 1. Get total work hours from attendance table
-                String sql = "SELECT SUM(total_hours) AS total_hours_worked "
-                        + "FROM attendance_table "
-                        + "WHERE employee_id = ? AND date >= ? AND date <= ?";
-                pstmt = connection.prepareStatement(sql);
-                pstmt.setInt(1, id);
-                pstmt.setDate(2, Date.valueOf(startDate));
-                pstmt.setDate(3, Date.valueOf(endDate));
-                rs = pstmt.executeQuery();
-                totalHoursWorked = 0;
-                if (rs.next()) {
-                    totalHoursWorked = rs.getDouble("total_hours_worked");
-                }
-
-                // 2. Calculate hourly rate
-                standardMonthlyHours = totalWorkingDays * 8; // 26 days x 8 hours/day
-                hourlyRate = monthlySalary / standardMonthlyHours;
-
-                // 3. Calculate gross pay based on actual hours
-                grossPay = hourlyRate * totalHoursWorked;
-
-                // 4. Compute deductions (using same rules as monthly, prorate for hours)
-                sss = (monthlySalary * 0.05) * (totalHoursWorked / standardMonthlyHours);
-                philHealth = (monthlySalary * 0.025) * (totalHoursWorked / standardMonthlyHours);
-                pagibig = Math.min(monthlySalary, 10000) * 0.02 * (totalHoursWorked / standardMonthlyHours);
-
-                // Taxable income
-                taxableIncome = grossPay - (sss + philHealth + pagibig);
-                tax = computeWithholdingTaxMonthly(taxableIncome); // simplified monthly tax
-
-                totalDeductions = sss + philHealth + pagibig + tax;
-                netPay = grossPay - totalDeductions;
-
-                if (!(totalHoursWorked > standardMonthlyHours)) {
-                    payslip
-                            = "----------------------------------------\n"
-                            + "                PAYSLIP\n"
-                            + "----------------------------------------\n"
-                            + "EMPLOYEE INFO\n"
-                            + "----------------------------------------\n"
-                            + "Employee Name      : " + employeeName + "\n"
-                            + "Employee ID        : " + id + "\n"
-                            + "Position           : " + position + "\n"
-                            + "Monthly Salary     : " + String.format("%.2f", monthlySalary) + "\n"
-                            + "Total Present      : " + totalPresent + "\n"
-                            + "Total Absent       : " + absentDays + "\n"
-                            + "Total Hours Worked : " + String.format("%.2f", totalHoursWorked) + "\n"
-                            + "Standard Work Days : " + totalWorkingDays + "\n"
-                            + "Standard Hours     : " + standardMonthlyHours + "\n"
-                            + "Hourly Rate        : " + String.format("%.2f", hourlyRate) + "\n"
-                            + "----------------------------------------\n"
-                            + "EARNINGS\n"
-                            + "----------------------------------------\n"
-                            + "Gross Pay          : " + String.format("%.2f", grossPay) + "\n"
-                            + "----------------------------------------\n"
-                            + "DEDUCTIONS\n"
-                            + "----------------------------------------\n"
-                            + "SSS                : " + String.format("%.2f", sss) + "\n"
-                            + "PhilHealth         : " + String.format("%.2f", philHealth) + "\n"
-                            + "Pag-IBIG           : " + String.format("%.2f", pagibig) + "\n"
-                            + "Taxable Income     : " + String.format("%.2f", taxableIncome) + "\n"
-                            + "Tax                : " + String.format("%.2f", tax) + "\n"
-                            + "Total Deduction    : " + String.format("%.2f", totalDeductions) + "\n"
-                            + "----------------------------------------\n"
-                            + "NET PAY            : " + String.format("%.2f", netPay) + "\n"
-                            + "----------------------------------------\n"
-                            + "Date               : " + today + "\n"
-                            + "Prepared by        : " + preparedByField.getText() + "\n";
-                    receiptArea.setText(payslip);
-                }
-
-                // Insert payroll record
-//                String insertPayroll = "INSERT INTO payroll_table (employee_id, total_working_days, absent_days, daily_rate, absence_deduction, net_pay, pay_period) "
-//                        + "VALUES (?, ?, ?, ?, ?, ?, ?)";
-//                pstmt = mainFrame.connection.prepareStatement(insertPayroll);
-//                pstmt.setInt(1, employeeId);
-//                pstmt.setInt(2, totalWorkingDays);
-//                pstmt.setInt(3, absentDays);
-//                pstmt.setDouble(4, dailyRate);
-//                pstmt.setDouble(5, absenceDeduction);
-//                pstmt.setDouble(6, netPay);
-//                pstmt.setString(7, payPeriod);
-//                pstmt.executeUpdate();
+            if (!empRS.next()) {
+                return;
             }
-        } catch (HeadlessException | SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Error generating payslip: " + ex.getMessage());
-        }
 
-    }
+            employeeName = empRS.getString("full_name");
+            position = empRS.getString("position");
+            monthlySalary = empRS.getDouble("salary");
 
-    public void recordPayslip() {
-        try {
-            String insertPayroll = "INSERT INTO payroll_table "
-                    + "(employee_id, employee_name, position, monthly_salary, total_present, total_absent, "
-                    + "total_hours_worked, standard_work_days, standard_hours, hourly_rate, gross_pay, "
-                    + "sss, philhealth, pagibig, taxable_income, tax, total_deduction, net_pay, pay_period, prepared_by) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            // ===============================
+            // WORKING DAYS
+            // ===============================
+            totalWorkingDays = totalWorkDaysField.getText().isEmpty()
+                    ? 0
+                    : Integer.parseInt(totalWorkDaysField.getText());
 
-            PreparedStatement ps = connection.prepareStatement(insertPayroll);
+            standardMonthlyHours = totalWorkingDays * 8;
+            hourlyRate = standardMonthlyHours == 0 ? 0 : monthlySalary / standardMonthlyHours;
 
-            ps.setInt(1, selectedEmployeeId);
-            ps.setString(2, employeeName);
-            ps.setString(3, position);
-            ps.setDouble(4, monthlySalary);
-            ps.setInt(5, totalPresent);
-            ps.setInt(6, absentDays);
-            ps.setDouble(7, totalHoursWorked);
-            ps.setInt(8, totalWorkingDays);
-            ps.setInt(9, standardMonthlyHours);
-            ps.setDouble(10, hourlyRate);
-            ps.setDouble(11, grossPay);
-            ps.setDouble(12, sss);
-            ps.setDouble(13, philHealth);
-            ps.setDouble(14, pagibig);
-            ps.setDouble(15, taxableIncome);
-            ps.setDouble(16, tax);
-            ps.setDouble(17, totalDeductions);
-            ps.setDouble(18, netPay);
-            ps.setString(19, today.toString());
-            ps.setString(20, preparedByField.getText());
+            // ===============================
+            // ATTENDANCE SUMMARY
+            // ===============================
+            String sumSQL
+                    = "SELECT COUNT(*) AS present, "
+                    + "SUM(TIMESTAMPDIFF(MINUTE,time_in,time_out)) AS minutes "
+                    + "FROM attendance_table WHERE employee_id=? AND date BETWEEN ? AND ? AND status='Present'";
 
-            ps.executeUpdate();
+            PreparedStatement sumPS = connection.prepareStatement(sumSQL);
+            sumPS.setInt(1, selectedEmployeeId);
+            sumPS.setString(2, startDate);
+            sumPS.setString(3, endDate);
 
-            JOptionPane.showMessageDialog(this, "Payslip recorded!");
+            ResultSet sumRS = sumPS.executeQuery();
 
+            totalPresent = 0;
+            totalHoursWorked = 0;
+
+            if (sumRS.next()) {
+                totalPresent = sumRS.getInt("present");
+                totalHoursWorked = sumRS.getDouble("minutes") / 60.0;
+            }
+
+            absentDays = Math.max(0, totalWorkingDays - totalPresent);
+
+            // ===============================
+            // 🔥 REAL-TIME OT & LATE
+            // ===============================
+            otPay = 0;
+            lateDeduct = 0;
+
+            String timeSQL
+                    = "SELECT time_in, time_out FROM attendance_table "
+                    + "WHERE employee_id=? AND date BETWEEN ? AND ? AND status='Present'";
+
+            PreparedStatement timePS = connection.prepareStatement(timeSQL);
+            timePS.setInt(1, selectedEmployeeId);
+            timePS.setString(2, startDate);
+            timePS.setString(3, endDate);
+
+            ResultSet timeRS = timePS.executeQuery();
+
+            LocalTime standardIn = LocalTime.of(8, 0);
+            LocalTime standardOut = LocalTime.of(17, 0);
+
+            while (timeRS.next()) {
+
+                if (timeRS.getTime("time_in") == null || timeRS.getTime("time_out") == null) {
+                    continue;
+                }
+
+                LocalTime timeIn = timeRS.getTime("time_in").toLocalTime();
+                LocalTime timeOut = timeRS.getTime("time_out").toLocalTime();
+
+                if (timeIn.isAfter(standardIn)) {
+                    long lateMin = Duration.between(standardIn, timeIn).toMinutes();
+                    lateDeduct += (lateMin / 60.0) * hourlyRate;
+                }
+
+                if (timeOut.isAfter(standardOut)) {
+                    long otMin = Duration.between(standardOut, timeOut).toMinutes();
+                    otPay += (otMin / 60.0) * hourlyRate * 1.25;
+                }
+            }
+
+            // ===============================
+            // PAY COMPUTATION
+            // ===============================
+            regularPay = hourlyRate * Math.min(totalHoursWorked, standardMonthlyHours);
+            grossPay = regularPay + otPay;
+
+            absentDeduct = absentDays * 8 * hourlyRate;
+
+            sss = monthlySalary * 0.05;
+            philHealth = monthlySalary * 0.025;
+            pagibig = Math.min(monthlySalary, 10000) * 0.02;
+
+            govContributions = sss + philHealth + pagibig;
+            taxableIncome = grossPay - govContributions;
+            tax = computeWithholdingTaxMonthly(taxableIncome);
+
+            totalDeduct = govContributions + tax + lateDeduct + absentDeduct;
+            netPay = grossPay - totalDeduct;
+
+            // ===============================
+            // SAVE TO PAYROLL TABLE
+            // ===============================
+            String saveSQL
+                    = "INSERT INTO payroll_table ("
+                    + "employee_id, employee_name, position, regular_pay, ot_pay, late_deduct, gross_pay, total_deduction, net_pay"
+                    + ") VALUES (?,?,?,?,?,?,?,?,?) "
+                    + "ON DUPLICATE KEY UPDATE "
+                    + "regular_pay=VALUES(regular_pay), ot_pay=VALUES(ot_pay), late_deduct=VALUES(late_deduct), "
+                    + "gross_pay=VALUES(gross_pay), total_deduction=VALUES(total_deduction), net_pay=VALUES(net_pay)";
+
+            PreparedStatement savePS = connection.prepareStatement(saveSQL);
+            savePS.setInt(1, selectedEmployeeId);
+            savePS.setString(2, employeeName);
+            savePS.setString(3, position);
+            savePS.setDouble(4, regularPay);
+            savePS.setDouble(5, otPay);
+            savePS.setDouble(6, lateDeduct);
+            savePS.setDouble(7, grossPay);
+            savePS.setDouble(8, totalDeduct);
+            savePS.setDouble(9, netPay);
+            savePS.executeUpdate();
+
+            // ===============================
+            // REFRESH + DISPLAY
+            // ===============================
             fetchPayroll();
 
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(null, "Error saving payroll: " + ex.getMessage());
-        }
+            payslip
+                    = "--------------------------\n"
+                    + "PAYSLIP\n"
+                    + "--------------------------\n"
+                    + "Employee: " + employeeName + "\n"
+                    + "Position: " + position + "\n"
+                    + "Regular Pay: " + String.format("%.2f", regularPay) + "\n"
+                    + "OT Pay: " + String.format("%.2f", otPay) + "\n"
+                    + "Late Deduct: " + String.format("%.2f", lateDeduct) + "\n"
+                    + "Net Pay: " + String.format("%.2f", netPay) + "\n";
 
+            receiptArea.setText(payslip);
+            JOptionPane.showMessageDialog(this, "Payslip generated successfully!");
+
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(this, "Error:\n" + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
+
+
     public void loadComboBox() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT date FROM attendance_table ORDER BY date DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox1.removeAllItems();
@@ -1029,12 +1042,12 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void loadEmployeeListComboBox() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM attendance_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox.removeAllItems();
             while (rs.next()) {
-                jComboBox.addItem(rs.getString(1));
+                jComboBox.addItem(rs.getString("employee_id"));
             }
             jComboBox.setSelectedIndex(-1);
         } catch (SQLException ex) {
@@ -1044,7 +1057,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void loadPayrollComboBox() {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT employee_id FROM payroll_table ORDER BY employee_id DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox2.removeAllItems();
@@ -1059,7 +1072,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     private void loadEmployeeData(int id) {
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String sql = "SELECT * FROM employees_table WHERE employee_id = ?";
             PreparedStatement pstmt = connection.prepareStatement(sql);
             pstmt.setInt(1, id);
@@ -1393,7 +1406,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         jLabel1.setFont(new java.awt.Font("SansSerif", 1, 28)); // NOI18N
         jLabel1.setForeground(new java.awt.Color(255, 255, 255));
         jLabel1.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
-        jLabel1.setText("EMSys");
+        jLabel1.setText("MENU");
 
         jButton4.setBackground(new java.awt.Color(26, 0, 51));
         jButton4.setFont(new java.awt.Font("Segoe UI", 0, 16)); // NOI18N
@@ -2854,7 +2867,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnUploadPhotoActionPerformed
 
     private void btnADDActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnADDActionPerformed
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             String name = txtName.getText().trim();
             java.util.Date birthUtilDate = dateBirth.getDate(); // get Date object
             String gender = comboGender.getSelectedItem().toString();
@@ -2960,7 +2973,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 "Are you sure you want to Remove this?.",
                 "Confimation", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("DELETE FROM employees_table WHERE employee_id = ?");
                 pstmt.setString(1, id);
 
@@ -3040,6 +3053,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         this.revalidate();
         this.repaint();
         loadPayrollComboBox();
+        fetchPayroll();
     }//GEN-LAST:event_jButton5ActionPerformed
 
     private void jButton7ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton7ActionPerformed
@@ -3057,7 +3071,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 "Are you sure you want to Remove this?.",
                 "Confimation", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt = connection.prepareStatement("SELECT photo_path FROM employees_table WHERE employee_id = ?");
                 pstmt.setString(1, id);
                 ResultSet rs = pstmt.executeQuery();
@@ -3232,7 +3246,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         clearSelectionButton.setEnabled(true);
         int row = usersTable.getSelectedRow();
         selectedUserId = Integer.parseInt(usersTable.getValueAt(row, 0).toString());
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM users_table WHERE user_id = ?");
             pstmt.setInt(1, selectedUserId);
 
@@ -3268,7 +3282,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private void resetDatabaseButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_resetDatabaseButtonActionPerformed
         if (JOptionPane.showConfirmDialog(this, "Are you sure you want to RESET The DATABASE? This Cannot be Undone", "Confirmation",
                 JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
-            try {
+            try (Connection connection = DatabaseConnection.getConnection()) {
                 PreparedStatement pstmt;
 
 //                File photoFile = new File("photos/");
@@ -3325,8 +3339,8 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     private void generatePayslipButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_generatePayslipButtonActionPerformed
         // TODO add your handling code here:
-        card.show(jPanel3, "card7");
         GeneratePaySlip();
+        card.show(jPanel3, "card5");
     }//GEN-LAST:event_generatePayslipButtonActionPerformed
 
     private void unselectButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_unselectButtonActionPerformed
@@ -3354,7 +3368,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     private void btnRemove1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRemove1ActionPerformed
         // TODO add your handling code here:
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             int confirm = JOptionPane.showConfirmDialog(
                     null,
                     "Are you sure you want to delete this payroll?",
@@ -3389,7 +3403,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_btnRemove1ActionPerformed
 
     private void btnView1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnView1ActionPerformed
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             // TODO add your handling code here:
             int row = payrollTable.getSelectedRow();
             if (row == -1) {
@@ -3454,7 +3468,6 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     private void recordButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_recordButtonActionPerformed
         // TODO add your handling code here:
-        recordPayslip();
     }//GEN-LAST:event_recordButtonActionPerformed
 
     private void jButton8ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton8ActionPerformed

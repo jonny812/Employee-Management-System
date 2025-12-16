@@ -2,6 +2,7 @@ package employee.management.system;
 
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.sql.Connection;
 import java.util.prefs.Preferences;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -48,8 +49,8 @@ public class LoginPage extends javax.swing.JFrame {
 
         String savedUser = prefs.get("rememberedUser", null);
         if (savedUser != null) {
-            try {
-                PreparedStatement pstmt = dashboard.connection.prepareStatement("SELECT * FROM users_table WHERE username = ?");
+            try (Connection connection = DatabaseConnection.getConnection()) {
+                PreparedStatement pstmt = connection.prepareStatement("SELECT * FROM users_table WHERE username = ?");
                 pstmt.setString(1, savedUser);
 
                 ResultSet rs = pstmt.executeQuery();
@@ -225,10 +226,10 @@ public class LoginPage extends javax.swing.JFrame {
     private void jButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton2ActionPerformed
         String username = usernameField.getText();
         String password = new String(passwordField.getPassword());
-        try {
+        try (Connection connection = DatabaseConnection.getConnection()) {
             // --- LOGIN VALIDATION QUERY ---
             String sql = "SELECT * FROM users_table WHERE username=? AND password=?";
-            java.sql.PreparedStatement pst = dashboard.connection.prepareStatement(sql);
+            java.sql.PreparedStatement pst = connection.prepareStatement(sql);
             pst.setString(1, username);
             pst.setString(2, password);
 

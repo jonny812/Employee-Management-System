@@ -377,6 +377,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
             timer.setRepeats(false);
             timer.start();
 
+            dashboard.updateDashboardCounts();
             dashboard.loadComboBox();
             dashboard.fetchAttendanceList();
 

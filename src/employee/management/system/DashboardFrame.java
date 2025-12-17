@@ -250,7 +250,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
     // ------------------- NEW METHOD -------------------
 
-    private void updateDashboardCounts() {
+    public void updateDashboardCounts() {
         try (Connection connection = DatabaseConnection.getConnection()) {
             // Total employees
             PreparedStatement totalStmt = connection.prepareStatement(
@@ -1011,7 +1011,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                         insertStmt.setDouble(16, tax);
                         insertStmt.setDouble(17, totalDeductions);
                         insertStmt.setDouble(18, netPay);
-                        insertStmt.setString(19, startOfMonth.toString()+" to "+endOfMonth.toString());
+                        insertStmt.setString(19, startOfMonth.toString() + " to " + endOfMonth.toString());
                         insertStmt.setString(20, preparedByField.getText());
 
                         insertStmt.executeUpdate();
@@ -1208,7 +1208,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 btnRemove.setEnabled(false);
                 unselectButton.setEnabled(false);
                 employeesTable.clearSelection();
-                
+
                 fetch();
                 loadEmployeeListComboBox();
 
@@ -3594,7 +3594,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 // Delete existing payroll
                 try (PreparedStatement deleteStmt
                         = connection.prepareStatement("DELETE FROM payroll_table WHERE pay_period = ?")) {
-                    deleteStmt.setString(1, startOfMonth.toString()+" to "+endOfMonth.toString());
+                    deleteStmt.setString(1, startOfMonth.toString() + " to " + endOfMonth.toString());
                     deleteStmt.executeUpdate();
                 }
 

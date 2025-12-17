@@ -51,8 +51,6 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
 
     Timer timer;
 
-    boolean scanningEnabled = true;
-
     /**
      * Creates new form TimeInOutFrame
      */
@@ -130,12 +128,6 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
     @Override
     public void run() {
         do {
-
-            // ✅ STOP scanning if disabled
-            if (!scanningEnabled) {
-                continue;
-            }
-            
             try {
                 Thread.sleep(50);
             } catch (InterruptedException e) {
@@ -156,35 +148,35 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
 
             try {
                 Result result = new MultiFormatReader().decode(bitmap);
-
                 if (result != null) {
-                    scanningEnabled = false; // STOP scanning
+                    employeeIdField.setText(result.toString());
+                    timeInOut();
 
-                    javax.swing.SwingUtilities.invokeLater(() -> {
-                        employeeIdField.setText(result.getText());
-                        timeInOut();
+                    camPanel.removeAll();
+                    camPanel.add(jLabel2, java.awt.BorderLayout.NORTH);
+                    camPanel.add(jLabel1, java.awt.BorderLayout.CENTER);
+                    camPanel.revalidate();
+                    camPanel.repaint();
 
-                        camPanel.removeAll();
-                        camPanel.add(jLabel2, java.awt.BorderLayout.NORTH);
-                        camPanel.add(jLabel1, java.awt.BorderLayout.CENTER);
-                        camPanel.revalidate();
-                        camPanel.repaint();
-                    });
+                    this.revalidate();
+                    this.repaint();
 
-                    // Resume camera after 3.5 seconds
-                    javax.swing.Timer timer = new javax.swing.Timer(3500, e -> {
-                        camPanel.removeAll();
-                        camPanel.add(webcamPanel, java.awt.BorderLayout.CENTER);
-                        camPanel.revalidate();
-                        camPanel.repaint();
-                        scanningEnabled = true; // RESUME scanning
-                    });
-                    timer.setRepeats(false);
-                    timer.start();
+                    try {
+                        Thread.sleep(3500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    camPanel.removeAll();
+                    camPanel.add(webcamPanel, java.awt.BorderLayout.CENTER);
+                    camPanel.revalidate();
+                    camPanel.repaint();
+
+                    this.revalidate();
+                    this.repaint();
                 }
-
             } catch (NotFoundException e) {
-                // No QR found (normal)
+                // QR not found in frame
             }
         } while (true);
     }
@@ -353,7 +345,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                                         LocalTime pmtOut = pmTimeOut.toLocalTime();
                                         pmHoursWorked = java.time.Duration.between(pmtIn, pmtOut).toMinutes() / 60.0;
                                     }
-
+                                    
                                     // Compute total hours worked
                                     double totalHoursWork = amHoursWorked + pmHoursWorked;
 

@@ -10,11 +10,9 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics2D;
-import java.awt.HeadlessException;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
@@ -36,10 +34,12 @@ import java.io.FileWriter;
 import java.text.MessageFormat;
 import java.awt.print.PrinterException;
 import java.awt.print.PrinterJob;
+import java.math.RoundingMode;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Date;
+import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -53,8 +53,6 @@ import java.util.ArrayList;
 import java.util.prefs.Preferences;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 
 public class DashboardFrame extends javax.swing.JFrame {
 
@@ -80,28 +78,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     LocalDate startOfMonth = yearMonth.atDay(1);
     LocalDate endOfMonth = yearMonth.atEndOfMonth();
 
-    // Payroll Global Variables
-    double monthlySalary = 0.0;
-    int totalPresent = 0;
-    int absentDays = 0;
-    double totalHoursWorked = 0.0;
-    int totalWorkingDays = 0;
-    int standardMonthlyHours = 0;
-    double hourlyRate = 0.0;
-    double grossPay = 0.0;
-
-    double sss = 0.0;
-    double philHealth = 0.0;
-    double pagibig = 0.0;
-    double taxableIncome = 0.0;
-    double tax = 0.0;
-    double totalDeductions = 0.0;
-    double netPay = 0.0;
-
-    String employeeName = "";
-    String position = "";
-    String preparedBy = "";
-
     String payslip;
 
     TimeInOutFrame1 timeInOut;
@@ -120,10 +96,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         card = (CardLayout) (jPanel3.getLayout());
 
         card.show(jPanel3, "card1");
-
-        totalWorkDaysField.setText("26");
-        startDateField.setText(startOfMonth.toString());
-        endDateField.setText(endOfMonth.toString());
 
         addButtonHoverEffects();
         // -------------------- DASHBOARD COUNTS --------------------
@@ -165,6 +137,8 @@ public class DashboardFrame extends javax.swing.JFrame {
                         v2.add(rs.getString("employee_id"));
                         v2.add(rs.getString("employee_name"));
                         v2.add(rs.getString("position"));
+                        v2.add(rs.getString("net_pay"));
+                        v2.add(rs.getString("pay_period"));
                         dtm.addRow(v2);
                     }
                 } catch (SQLException ex) {
@@ -272,29 +246,6 @@ public class DashboardFrame extends javax.swing.JFrame {
                 }
             }
         });
-
-        DocumentListener genListener = new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                GeneratePaySlip();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                GeneratePaySlip();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                GeneratePaySlip();
-            }
-        };
-
-        // attach to all fields
-        totalWorkDaysField.getDocument().addDocumentListener(genListener);
-        startDateField.getDocument().addDocumentListener(genListener);
-        endDateField.getDocument().addDocumentListener(genListener);
-        preparedByField.getDocument().addDocumentListener(genListener);
 
     }
     // ------------------- NEW METHOD -------------------
@@ -407,48 +358,48 @@ public class DashboardFrame extends javax.swing.JFrame {
             stmt.execute(createAttendanceTable);
 
             // -------------------- TAX BRACKETS TABLE --------------------
-            String createTaxBracketsTable = "CREATE TABLE IF NOT EXISTS tax_brackets ("
-                    + "bracket_id INT AUTO_INCREMENT PRIMARY KEY, "
-                    + "min_income DOUBLE NOT NULL, "
-                    + "max_income DOUBLE NOT NULL, "
-                    + "tax_rate DOUBLE NOT NULL, "
-                    + "base_tax DOUBLE DEFAULT 0, "
-                    + "UNIQUE(min_income, max_income))";
-            stmt.execute(createTaxBracketsTable);
-
+//            String createTaxBracketsTable = "CREATE TABLE IF NOT EXISTS tax_brackets ("
+//                    + "bracket_id INT AUTO_INCREMENT PRIMARY KEY, "
+//                    + "min_income DOUBLE NOT NULL, "
+//                    + "max_income DOUBLE NOT NULL, "
+//                    + "tax_rate DOUBLE NOT NULL, "
+//                    + "base_tax DOUBLE DEFAULT 0, "
+//                    + "UNIQUE(min_income, max_income))";
+//            stmt.execute(createTaxBracketsTable);
             // Insert default tax brackets
-            String insertBrackets = "INSERT IGNORE INTO tax_brackets (min_income, max_income, tax_rate, base_tax) VALUES "
-                    + "(0, 20833, 0, 0), "
-                    + "(20833. 01, 33333, 0.15, 0), "
-                    + "(33333.01, 66666, 0.20, 2500), "
-                    + "(66666.01, 166666, 0.25, 10833. 33), "
-                    + "(166666.01, 666666, 0.30, 40833.33), "
-                    + "(666666.01, 999999999, 0.35, 200833.33)";
-            stmt.execute(insertBrackets);
-
+//            String insertBrackets = "INSERT IGNORE INTO tax_brackets (min_income, max_income, tax_rate, base_tax) VALUES "
+//                    + "(0, 20833, 0, 0), "
+//                    + "(20833.01, 33333, 0.15, 0), "
+//                    + "(33333.01, 66666, 0.20, 2500), "
+//                    + "(66666.01, 166666, 0.25, 10833.33), "
+//                    + "(166666.01, 666666, 0.30, 40833.33), "
+//                    + "(666666.01, 999999999, 0.35, 200833.33)";
+//            stmt.execute(insertBrackets);
             // -------------------- DEDUCTIONS TABLE --------------------
-            String createDeductionsTable = "CREATE TABLE IF NOT EXISTS deductions_table ("
-                    + "deduction_id INT AUTO_INCREMENT PRIMARY KEY, "
-                    + "taxable_income DOUBLE, "
-                    + "sss DOUBLE, "
-                    + "philhealth DOUBLE, "
-                    + "pagibig DOUBLE, "
-                    + "tax DOUBLE)";
+            String createDeductionsTable = "CREATE TABLE IF NOT EXISTS deduction_rates_table ("
+                    + "deduction_rate_id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "sss_rate DOUBLE UNIQUE NOT NULL, "
+                    + "philhealth_rate DOUBLE UNIQUE NOT NULL, "
+                    + "pagibig_rate DOUBLE UNIQUE NOT NULL)";
             stmt.execute(createDeductionsTable);
 
-            // -------------------- TRIGGER TO CALCULATE TAX --------------------
-            String createTaxTrigger = "CREATE TRIGGER IF NOT EXISTS calculate_tax_trigger "
-                    + "BEFORE INSERT ON payroll_table "
-                    + "FOR EACH ROW "
-                    + "BEGIN "
-                    + "  SELECT (base_tax + (NEW.taxable_income - min_income) * tax_rate) INTO @calculated_tax "
-                    + "  FROM tax_brackets "
-                    + "  WHERE NEW.taxable_income >= min_income AND NEW. taxable_income <= max_income "
-                    + "  LIMIT 1; "
-                    + "  SET NEW.tax = COALESCE(@calculated_tax, 0); "
-                    + "END";
-            stmt.execute(createTaxTrigger);
+            // Insert default rates
+            String insertRates = "INSERT IGNORE INTO deduction_rates_table (sss_rate, philhealth_rate, pagibig_rate) VALUES "
+                    + "(0.045, 0.025, 0.02)";
+            stmt.execute(insertRates);
 
+            // -------------------- TRIGGER TO CALCULATE TAX --------------------
+//            String createTaxTrigger = "CREATE TRIGGER IF NOT EXISTS calculate_tax_trigger "
+//                    + "BEFORE INSERT ON payroll_table "
+//                    + "FOR EACH ROW "
+//                    + "BEGIN "
+//                    + "  SELECT (base_tax + (NEW.taxable_income - min_income) * tax_rate) INTO @calculated_tax "
+//                    + "  FROM tax_brackets "
+//                    + "  WHERE NEW.taxable_income >= min_income AND NEW. taxable_income <= max_income "
+//                    + "  LIMIT 1; "
+//                    + "  SET NEW.tax = COALESCE(@calculated_tax, 0); "
+//                    + "END";
+//            stmt.execute(createTaxTrigger);
             // -------------------- PAYROLL TABLE --------------------
             String createPayrollTable = "CREATE TABLE IF NOT EXISTS payroll_table ("
                     + "id INT AUTO_INCREMENT PRIMARY KEY, "
@@ -473,12 +424,30 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "pay_period VARCHAR(50), "
                     + "prepared_by VARCHAR(100))";
             stmt.execute(createPayrollTable);
-            
+
             connection.close();
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(null, "Database Connecting Failed!\n" + ex.getLocalizedMessage());
             System.exit(0);
+        }
+    }
+
+    public void fetchDeductions() {
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            PreparedStatement pstmt = connection.prepareStatement(
+                    "SELECT * FROM deduction_rates_table"
+            );
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                sssField.setText(rs.getString("sss_rate"));
+                philhealthField.setText(rs.getString("philhealth_rate"));
+                pagibigField.setText(rs.getString("pagibig_rate"));
+            }
+        } catch (SQLException ex) {
+            Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
+            JOptionPane.showMessageDialog(null, "Fetching Payroll Failed!\n" + ex.getLocalizedMessage());
         }
     }
 
@@ -841,190 +810,223 @@ public class DashboardFrame extends javax.swing.JFrame {
         return tax;
     }
 
-    public void GeneratePaySlip() {
+    public void GeneratePaySlip(int id) {
 
-        int row = employeesTable.getSelectedRow();
-        if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Please select an employee to edit!");
-            return;
-        }
-
-        int id = Integer.parseInt(employeesTable.getValueAt(row, 0).toString());
-        selectedEmployeeId = id; // store globally
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        df.setRoundingMode(RoundingMode.HALF_UP);
 
         try (Connection connection = DatabaseConnection.getConnection()) {
-            String startDate = startDateField.getText();
-            String endDate = endDateField.getText();
 
-            // Define payroll period
-//            String payPeriod = today.getYear() + "-" + today.getMonth() + "-" + startOfMonth.getDayOfMonth() + "-" + endOfMonth.getDayOfMonth();
-            // Select employee
-            String empQuery = "SELECT full_name, position, salary FROM employees_table WHERE employee_id = ?";
-            PreparedStatement pstmt = connection.prepareStatement(empQuery);
-            pstmt.setInt(1, id);
-            ResultSet rs = pstmt.executeQuery();
+            String sql = "SELECT * FROM payroll_table WHERE employee_id = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
 
-            if (rs.next()) {
-                employeeName = rs.getString("full_name");
-                position = rs.getString("position");
-                monthlySalary = rs.getDouble("salary");
-
-                totalWorkingDays = 0;
-                if (!totalWorkDaysField.getText().isEmpty()) {
-                    totalWorkingDays = Integer.parseInt(totalWorkDaysField.getText());
-                }
-
-                // Count total present and absent days from attendance
-                String countPresentQuery = "SELECT COUNT(*) AS total_present FROM attendance_table "
-                        + "WHERE employee_id=? AND date BETWEEN ? AND ? AND status='Present'";
-                pstmt = connection.prepareStatement(countPresentQuery);
                 pstmt.setInt(1, id);
-                pstmt.setString(2, startDate);
-                pstmt.setString(3, endDate);
-                rs = pstmt.executeQuery();
+                ResultSet rs = pstmt.executeQuery();
 
-                totalPresent = 0;
                 if (rs.next()) {
-                    totalPresent = rs.getInt("total_present");
-                }
 
-                absentDays = totalWorkingDays - totalPresent;
-                if (absentDays < 0) {
-                    absentDays = 0;
-                }
-
-                // 1. Get total work hours from attendance table
-                String sql = "SELECT SUM(total_hours) AS total_hours_worked "
-                        + "FROM attendance_table "
-                        + "WHERE employee_id = ? AND date >= ? AND date <= ?";
-                pstmt = connection.prepareStatement(sql);
-                pstmt.setInt(1, id);
-                pstmt.setDate(2, Date.valueOf(startDate));
-                pstmt.setDate(3, Date.valueOf(endDate));
-                rs = pstmt.executeQuery();
-                totalHoursWorked = 0;
-                if (rs.next()) {
-                    totalHoursWorked = rs.getDouble("total_hours_worked");
-                }
-
-                // 2. Calculate hourly rate
-                standardMonthlyHours = totalWorkingDays * 8; // 26 days x 8 hours/day
-                hourlyRate = monthlySalary / standardMonthlyHours;
-
-                // 3. Calculate gross pay based on actual hours
-                grossPay = hourlyRate * totalHoursWorked;
-
-                // 4. Compute deductions (using same rules as monthly, prorate for hours)
-                sss = (monthlySalary * 0.05) * (totalHoursWorked / standardMonthlyHours);
-                philHealth = (monthlySalary * 0.025) * (totalHoursWorked / standardMonthlyHours);
-                pagibig = Math.min(monthlySalary, 10000) * 0.02 * (totalHoursWorked / standardMonthlyHours);
-
-                // Taxable income
-                taxableIncome = grossPay - (sss + philHealth + pagibig);
-                tax = computeWithholdingTaxMonthly(taxableIncome); // simplified monthly tax
-
-                totalDeductions = sss + philHealth + pagibig + tax;
-                netPay = grossPay - totalDeductions;
-
-                if (!(totalHoursWorked > standardMonthlyHours)) {
                     payslip
                             = "----------------------------------------\n"
                             + "                PAYSLIP\n"
                             + "----------------------------------------\n"
                             + "EMPLOYEE INFO\n"
                             + "----------------------------------------\n"
-                            + "Employee Name      : " + employeeName + "\n"
-                            + "Employee ID        : " + id + "\n"
-                            + "Position           : " + position + "\n"
-                            + "Monthly Salary     : " + String.format("%.2f", monthlySalary) + "\n"
-                            + "Total Present      : " + totalPresent + "\n"
-                            + "Total Absent       : " + absentDays + "\n"
-                            + "Total Hours Worked : " + String.format("%.2f", totalHoursWorked) + "\n"
-                            + "Standard Work Days : " + totalWorkingDays + "\n"
-                            + "Standard Hours     : " + standardMonthlyHours + "\n"
-                            + "Hourly Rate        : " + String.format("%.2f", hourlyRate) + "\n"
+                            + "Employee Name      : " + rs.getString("employee_name") + "\n"
+                            + "Employee ID        : " + rs.getInt("employee_id") + "\n"
+                            + "Position           : " + rs.getString("position") + "\n"
+                            + "Monthly Salary     : " + df.format(rs.getDouble("monthly_salary")) + "\n"
+                            + "Total Present      : " + rs.getInt("total_present") + "\n"
+                            + "Total Absent       : " + rs.getInt("total_absent") + "\n"
+                            + "Total Hours Worked : " + df.format(rs.getDouble("total_hours_worked")) + "\n"
+                            + "Standard Work Days : " + rs.getInt("standard_work_days") + "\n"
+                            + "Standard Hours     : " + rs.getInt("standard_hours") + "\n"
+                            + "Hourly Rate        : " + df.format(rs.getDouble("hourly_rate")) + "\n"
                             + "----------------------------------------\n"
                             + "EARNINGS\n"
                             + "----------------------------------------\n"
-                            + "Gross Pay          : " + String.format("%.2f", grossPay) + "\n"
+                            + "Gross Pay          : " + df.format(rs.getDouble("gross_pay")) + "\n"
                             + "----------------------------------------\n"
                             + "DEDUCTIONS\n"
                             + "----------------------------------------\n"
-                            + "SSS                : " + String.format("%.2f", sss) + "\n"
-                            + "PhilHealth         : " + String.format("%.2f", philHealth) + "\n"
-                            + "Pag-IBIG           : " + String.format("%.2f", pagibig) + "\n"
-                            + "Taxable Income     : " + String.format("%.2f", taxableIncome) + "\n"
-                            + "Tax                : " + String.format("%.2f", tax) + "\n"
-                            + "Total Deduction    : " + String.format("%.2f", totalDeductions) + "\n"
+                            + "SSS                : " + df.format(rs.getDouble("sss")) + "\n"
+                            + "PhilHealth         : " + df.format(rs.getDouble("philhealth")) + "\n"
+                            + "Pag-IBIG           : " + df.format(rs.getDouble("pagibig")) + "\n"
+                            + "Taxable Income     : " + df.format(rs.getDouble("taxable_income")) + "\n"
+                            + "Tax                : " + df.format(rs.getDouble("tax")) + "\n"
+                            + "Total Deduction    : " + df.format(rs.getDouble("total_deduction")) + "\n"
                             + "----------------------------------------\n"
-                            + "NET PAY            : " + String.format("%.2f", netPay) + "\n"
+                            + "NET PAY            : " + df.format(rs.getDouble("net_pay")) + "\n"
                             + "----------------------------------------\n"
-                            + "Date               : " + today + "\n"
-                            + "Prepared by        : " + preparedByField.getText() + "\n";
-                    receiptArea.setText(payslip);
-                }
+                            + "Pay Period         : " + rs.getString("pay_period") + "\n"
+                            + "Prepared By        : " + rs.getString("prepared_by") + "\n";
 
-                // Insert payroll record
-//                String insertPayroll = "INSERT INTO payroll_table (employee_id, total_working_days, absent_days, daily_rate, absence_deduction, net_pay, pay_period) "
-//                        + "VALUES (?, ?, ?, ?, ?, ?, ?)";
-//                pstmt = mainFrame.connection.prepareStatement(insertPayroll);
-//                pstmt.setInt(1, employeeId);
-//                pstmt.setInt(2, totalWorkingDays);
-//                pstmt.setInt(3, absentDays);
-//                pstmt.setDouble(4, dailyRate);
-//                pstmt.setDouble(5, absenceDeduction);
-//                pstmt.setDouble(6, netPay);
-//                pstmt.setString(7, payPeriod);
-//                pstmt.executeUpdate();
+                } else {
+                    payslip = "No payslip found for this employee.";
+                }
             }
-        } catch (HeadlessException | SQLException ex) {
+
+        } catch (SQLException ex) {
             JOptionPane.showMessageDialog(this, "Error generating payslip: " + ex.getMessage());
         }
-
     }
 
     public void recordPayslip() {
+
+        final int HOURS_PER_DAY = 8;
+        final int STANDARD_WORK_DAYS = 26;
+        final double PAGIBIG_CAP = 10000;
+
+        DecimalFormat df = new DecimalFormat("#,##0.00");
+        df.setRoundingMode(RoundingMode.HALF_UP);
+
         try (Connection connection = DatabaseConnection.getConnection()) {
-            String insertPayroll = "INSERT INTO payroll_table "
-                    + "(employee_id, employee_name, position, monthly_salary, total_present, total_absent, "
-                    + "total_hours_worked, standard_work_days, standard_hours, hourly_rate, gross_pay, "
-                    + "sss, philhealth, pagibig, taxable_income, tax, total_deduction, net_pay, pay_period, prepared_by) "
-                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-            PreparedStatement ps = connection.prepareStatement(insertPayroll);
+            connection.setAutoCommit(false);
 
-            ps.setInt(1, selectedEmployeeId);
-            ps.setString(2, employeeName);
-            ps.setString(3, position);
-            ps.setDouble(4, monthlySalary);
-            ps.setInt(5, totalPresent);
-            ps.setInt(6, absentDays);
-            ps.setDouble(7, totalHoursWorked);
-            ps.setInt(8, totalWorkingDays);
-            ps.setInt(9, standardMonthlyHours);
-            ps.setDouble(10, hourlyRate);
-            ps.setDouble(11, grossPay);
-            ps.setDouble(12, sss);
-            ps.setDouble(13, philHealth);
-            ps.setDouble(14, pagibig);
-            ps.setDouble(15, taxableIncome);
-            ps.setDouble(16, tax);
-            ps.setDouble(17, totalDeductions);
-            ps.setDouble(18, netPay);
-            ps.setString(19, today.toString());
-            ps.setString(20, preparedByField.getText());
+            // Delete existing payroll
+            try (PreparedStatement deleteStmt
+                    = connection.prepareStatement("DELETE FROM payroll_table WHERE pay_period = ?")) {
+                deleteStmt.setDate(1, Date.valueOf(today));
+                deleteStmt.executeUpdate();
+            }
 
-            ps.executeUpdate();
+            // Get deduction rates
+            double sssRate = 0, philhealthRate = 0, pagibigRate = 0;
+            try (PreparedStatement rateStmt
+                    = connection.prepareStatement(
+                            "SELECT sss_rate, philhealth_rate, pagibig_rate FROM deduction_rates_table"); ResultSet rs = rateStmt.executeQuery()) {
 
-            JOptionPane.showMessageDialog(this, "Payslip recorded!");
+                if (rs.next()) {
+                    sssRate = rs.getDouble("sss_rate");
+                    philhealthRate = rs.getDouble("philhealth_rate");
+                    pagibigRate = rs.getDouble("pagibig_rate");
+                }
+            }
 
+            // Get employees
+            try (PreparedStatement empStmt
+                    = connection.prepareStatement(
+                            "SELECT employee_id, full_name, position, salary FROM employees_table"); ResultSet empRs = empStmt.executeQuery()) {
+
+                while (empRs.next()) {
+
+                    int employeeId = empRs.getInt("employee_id");
+                    String employeeName = empRs.getString("full_name");
+                    String position = empRs.getString("position");
+                    double monthlySalary = empRs.getDouble("salary");
+
+                    int standardHours = STANDARD_WORK_DAYS * HOURS_PER_DAY;
+
+                    // Present days
+                    int totalPresent = 0;
+                    try (PreparedStatement presentStmt
+                            = connection.prepareStatement(
+                                    "SELECT COUNT(*) FROM attendance_table "
+                                    + "WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'Present'")) {
+
+                        presentStmt.setInt(1, employeeId);
+                        presentStmt.setDate(2, Date.valueOf(startOfMonth));
+                        presentStmt.setDate(3, Date.valueOf(endOfMonth));
+
+                        try (ResultSet rs = presentStmt.executeQuery()) {
+                            if (rs.next()) {
+                                totalPresent = rs.getInt(1);
+                            }
+                        }
+                    }
+
+                    int absentDays = Math.max(0, STANDARD_WORK_DAYS - totalPresent);
+
+                    // Total hours worked
+                    double totalHoursWorked = 0;
+                    try (PreparedStatement hoursStmt
+                            = connection.prepareStatement(
+                                    "SELECT SUM(total_hours) FROM attendance_table "
+                                    + "WHERE employee_id = ? AND date BETWEEN ? AND ?")) {
+
+                        hoursStmt.setInt(1, employeeId);
+                        hoursStmt.setDate(2, Date.valueOf(startOfMonth));
+                        hoursStmt.setDate(3, Date.valueOf(endOfMonth));
+
+                        try (ResultSet rs = hoursStmt.executeQuery()) {
+                            if (rs.next()) {
+                                totalHoursWorked = rs.getDouble(1);
+                            }
+                        }
+                    }
+
+                    // Salary computation
+                    double hourlyRate = standardHours == 0 ? 0 : monthlySalary / standardHours;
+                    double grossPay = hourlyRate * totalHoursWorked;
+
+                    double sss = (monthlySalary * sssRate) * (totalHoursWorked / standardHours);
+                    double philhealth = (monthlySalary * philhealthRate) * (totalHoursWorked / standardHours);
+                    double pagibig = Math.min(monthlySalary, PAGIBIG_CAP)
+                            * pagibigRate * (totalHoursWorked / standardHours);
+
+                    double taxableIncome = grossPay - (sss + philhealth + pagibig);
+                    double tax = computeWithholdingTaxMonthly(taxableIncome)
+                            * (totalHoursWorked / standardHours);
+
+                    double totalDeductions = sss + philhealth + pagibig + tax;
+                    double netPay = grossPay - totalDeductions;
+
+                    // Format to 2 decimal places
+                    hourlyRate = Double.parseDouble(df.format(hourlyRate).replace(",", ""));
+                    grossPay = Double.parseDouble(df.format(grossPay).replace(",", ""));
+                    sss = Double.parseDouble(df.format(sss).replace(",", ""));
+                    philhealth = Double.parseDouble(df.format(philhealth).replace(",", ""));
+                    pagibig = Double.parseDouble(df.format(pagibig).replace(",", ""));
+                    taxableIncome = Double.parseDouble(df.format(taxableIncome).replace(",", ""));
+                    tax = Double.parseDouble(df.format(tax).replace(",", ""));
+                    totalDeductions = Double.parseDouble(df.format(totalDeductions).replace(",", ""));
+                    netPay = Double.parseDouble(df.format(netPay).replace(",", ""));
+
+                    // Insert payroll
+                    try (PreparedStatement insertStmt
+                            = connection.prepareStatement(
+                                    "INSERT INTO payroll_table ("
+                                    + "employee_id, employee_name, position, monthly_salary, "
+                                    + "total_present, total_absent, total_hours_worked, "
+                                    + "standard_work_days, standard_hours, hourly_rate, gross_pay, "
+                                    + "sss, philhealth, pagibig, taxable_income, tax, "
+                                    + "total_deduction, net_pay, pay_period, prepared_by) "
+                                    + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+
+                        insertStmt.setInt(1, employeeId);
+                        insertStmt.setString(2, employeeName);
+                        insertStmt.setString(3, position);
+                        insertStmt.setDouble(4, monthlySalary);
+                        insertStmt.setInt(5, totalPresent);
+                        insertStmt.setInt(6, absentDays);
+                        insertStmt.setDouble(7, totalHoursWorked);
+                        insertStmt.setInt(8, STANDARD_WORK_DAYS);
+                        insertStmt.setInt(9, standardHours);
+                        insertStmt.setDouble(10, hourlyRate);
+                        insertStmt.setDouble(11, grossPay);
+                        insertStmt.setDouble(12, sss);
+                        insertStmt.setDouble(13, philhealth);
+                        insertStmt.setDouble(14, pagibig);
+                        insertStmt.setDouble(15, taxableIncome);
+                        insertStmt.setDouble(16, tax);
+                        insertStmt.setDouble(17, totalDeductions);
+                        insertStmt.setDouble(18, netPay);
+                        insertStmt.setString(19, startOfMonth.toString()+" to "+endOfMonth.toString());
+                        insertStmt.setString(20, preparedByField.getText());
+
+                        insertStmt.executeUpdate();
+                    }
+                }
+            }
+
+            connection.commit();
+            JOptionPane.showMessageDialog(this, "Payslip recorded successfully!");
             fetchPayroll();
 
         } catch (SQLException ex) {
             ex.printStackTrace();
-            JOptionPane.showMessageDialog(null, "Error saving payroll: " + ex.getMessage());
+            JOptionPane.showMessageDialog(this, "Error saving payroll: " + ex.getMessage());
         }
-
     }
 
     public void loadComboBox() {
@@ -1144,7 +1146,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void updateEmployee(int id) {
-        try (Connection conn = DriverManager.getConnection("jdbc:mysql://localhost:3306/employee_management_database", "root", "")) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
 
             String name = txtName.getText().trim();
             java.util.Date birthUtilDate = dateBirth.getDate(); // get Date object
@@ -1181,7 +1183,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             Files.copy(selectedFile.toPath(), destinationFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
             String sql = "UPDATE employees_table SET photo_path=?, full_name=?, birth_date=?, gender=?, address=?, contact_number=?, salary=?, email_address=?, position=?, department=?, hired_date=? WHERE employee_id=?";
-            PreparedStatement pst = conn.prepareStatement(sql);
+            PreparedStatement pst = connection.prepareStatement(sql);
             pst.setString(1, photoPath);
             pst.setString(2, name);
             pst.setDate(3, birthSqlDate);
@@ -1204,15 +1206,11 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                 btnUpdate.setEnabled(false);
                 btnRemove.setEnabled(false);
-                generatePayslipButton.setEnabled(false);
                 unselectButton.setEnabled(false);
                 employeesTable.clearSelection();
-
-                // ✅ Refresh the table inside DashboardFrame safely
-                java.awt.Window window = javax.swing.SwingUtilities.getWindowAncestor(this);
-                if (window instanceof DashboardFrame) {
-                    ((DashboardFrame) window).fetch();
-                }
+                
+                fetch();
+                loadEmployeeListComboBox();
 
             } else {
                 JOptionPane.showMessageDialog(this, "⚠️ Failed to update employee!", "Error", JOptionPane.ERROR_MESSAGE);
@@ -1307,9 +1305,9 @@ public class DashboardFrame extends javax.swing.JFrame {
         payroll = new javax.swing.JPanel();
         jPanel6 = new javax.swing.JPanel();
         jComboBox2 = new javax.swing.JComboBox<>();
-        btnRemove1 = new javax.swing.JButton();
         btnView1 = new javax.swing.JButton();
         unselectButton1 = new javax.swing.JButton();
+        deletePayrollButton = new javax.swing.JButton();
         jScrollPane5 = new javax.swing.JScrollPane();
         payrollTable = new javax.swing.JTable();
         settings = new javax.swing.JPanel();
@@ -1341,10 +1339,15 @@ public class DashboardFrame extends javax.swing.JFrame {
         updateButton = new javax.swing.JButton();
         clearSelectionButton = new javax.swing.JButton();
         manageDeductions = new javax.swing.JPanel();
-        jLabel9 = new javax.swing.JLabel();
-        jLabel10 = new javax.swing.JLabel();
-        jTextField4 = new javax.swing.JTextField();
-        jTextField5 = new javax.swing.JTextField();
+        addUpdatePanel1 = new javax.swing.JPanel();
+        manageDeductionLabel = new javax.swing.JLabel();
+        addUpdateUsernameLabel1 = new javax.swing.JLabel();
+        pagibigField = new javax.swing.JTextField();
+        addUpdatePasswordLabel2 = new javax.swing.JLabel();
+        philhealthField = new javax.swing.JTextField();
+        addUpdateUsernameLabel2 = new javax.swing.JLabel();
+        sssField = new javax.swing.JTextField();
+        jButton9 = new javax.swing.JButton();
         database = new javax.swing.JPanel();
         resetDatabaseButton = new javax.swing.JButton();
         generatePayslip = new javax.swing.JPanel();
@@ -1908,7 +1911,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         addEmployeePanelLayout.setHorizontalGroup(
             addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                .addContainerGap(58, Short.MAX_VALUE)
+                .addContainerGap(133, Short.MAX_VALUE)
                 .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(addEmployeePanelLayout.createSequentialGroup()
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1964,14 +1967,14 @@ public class DashboardFrame extends javax.swing.JFrame {
                                     .addComponent(qrHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
                                     .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)))))
                     .addComponent(jLabel2))
-                .addContainerGap(58, Short.MAX_VALUE))
+                .addContainerGap(133, Short.MAX_VALUE))
         );
         addEmployeePanelLayout.setVerticalGroup(
             addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(addEmployeePanelLayout.createSequentialGroup()
                 .addContainerGap()
                 .addComponent(jLabel2)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 43, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 93, Short.MAX_VALUE)
                 .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(imageHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(qrHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))
@@ -2025,7 +2028,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(dateHired, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(hiredate, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addContainerGap(43, Short.MAX_VALUE))
+                .addContainerGap(93, Short.MAX_VALUE))
         );
 
         jPanel3.add(addEmployeePanel, "card2");
@@ -2060,7 +2063,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             jPanel5Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel5Layout.createSequentialGroup()
                 .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 444, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 596, Short.MAX_VALUE)
                 .addComponent(btnExport, javax.swing.GroupLayout.PREFERRED_SIZE, 84, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(20, 20, 20))
         );
@@ -2154,7 +2157,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         generatePayslipButton.setForeground(new java.awt.Color(51, 51, 51));
         generatePayslipButton.setText("GENERATE PAYSLIP");
         generatePayslipButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        generatePayslipButton.setEnabled(false);
         generatePayslipButton.setFocusable(false);
         generatePayslipButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -2181,13 +2183,13 @@ public class DashboardFrame extends javax.swing.JFrame {
             jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel4Layout.createSequentialGroup()
                 .addComponent(jComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 18, Short.MAX_VALUE)
+                .addGap(18, 18, 18)
                 .addComponent(unselectButton)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 100, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnUpdate)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnRemove, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 252, Short.MAX_VALUE)
                 .addComponent(generatePayslipButton)
                 .addGap(20, 20, 20))
         );
@@ -2258,19 +2260,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         jComboBox2.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Search" }));
         jComboBox2.setPreferredSize(new java.awt.Dimension(300, 30));
 
-        btnRemove1.setBackground(new java.awt.Color(231, 76, 60));
-        btnRemove1.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
-        btnRemove1.setForeground(new java.awt.Color(255, 255, 255));
-        btnRemove1.setText("REMOVE");
-        btnRemove1.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        btnRemove1.setEnabled(false);
-        btnRemove1.setFocusable(false);
-        btnRemove1.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnRemove1ActionPerformed(evt);
-            }
-        });
-
         btnView1.setBackground(new java.awt.Color(255, 255, 255));
         btnView1.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
         btnView1.setForeground(new java.awt.Color(51, 51, 51));
@@ -2297,16 +2286,28 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
         });
 
+        deletePayrollButton.setBackground(new java.awt.Color(231, 76, 60));
+        deletePayrollButton.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
+        deletePayrollButton.setForeground(new java.awt.Color(255, 255, 255));
+        deletePayrollButton.setText("DELETE");
+        deletePayrollButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        deletePayrollButton.setFocusable(false);
+        deletePayrollButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                deletePayrollButtonActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel6Layout = new javax.swing.GroupLayout(jPanel6);
         jPanel6.setLayout(jPanel6Layout);
         jPanel6Layout.setHorizontalGroup(
             jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel6Layout.createSequentialGroup()
                 .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 167, Short.MAX_VALUE)
+                .addGap(18, 18, 18)
+                .addComponent(deletePayrollButton)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 372, Short.MAX_VALUE)
                 .addComponent(unselectButton1)
-                .addGap(61, 61, 61)
-                .addComponent(btnRemove1, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnView1, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(52, 52, 52))
@@ -2317,9 +2318,9 @@ public class DashboardFrame extends javax.swing.JFrame {
                 .addGap(15, 15, 15)
                 .addGroup(jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(btnRemove1)
                     .addComponent(btnView1)
-                    .addComponent(unselectButton1))
+                    .addComponent(unselectButton1)
+                    .addComponent(deletePayrollButton))
                 .addGap(15, 15, 15))
         );
 
@@ -2330,17 +2331,17 @@ public class DashboardFrame extends javax.swing.JFrame {
         payrollTable.setForeground(new java.awt.Color(0, 0, 0));
         payrollTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null, null, null, null, null, null, null},
-                {null, null, null, null, null, null, null, null, null, null, null},
-                {null, null, null, null, null, null, null, null, null, null, null},
-                {null, null, null, null, null, null, null, null, null, null, null}
+                {null, null, null, null, null},
+                {null, null, null, null, null},
+                {null, null, null, null, null},
+                {null, null, null, null, null}
             },
             new String [] {
-                "Employee ID", "Name", "Position", "Regular Pay", "OT Pay", "Late Deduct", "Absent Deduct", "Gov Contributions", "Total Deduct", "Net Pay", "Pay Period"
+                "Employee ID", "Name", "Position", "Net Pay", "Pay Period"
             }
         ) {
             boolean[] canEdit = new boolean [] {
-                false, false, false, false, false, false, false, false, false, false, false
+                false, false, false, true, true
             };
 
             public boolean isCellEditable(int rowIndex, int columnIndex) {
@@ -2641,45 +2642,90 @@ public class DashboardFrame extends javax.swing.JFrame {
         jTabbedPane1.addTab("Manage Users", manageUsersPanel);
 
         manageDeductions.setBackground(new java.awt.Color(26, 0, 51));
+        manageDeductions.setLayout(new java.awt.GridLayout());
 
-        jLabel9.setText("jLabel9");
+        addUpdatePanel1.setOpaque(false);
+        addUpdatePanel1.setLayout(new java.awt.GridBagLayout());
 
-        jLabel10.setText("jLabel10");
+        manageDeductionLabel.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        manageDeductionLabel.setForeground(new java.awt.Color(255, 255, 255));
+        manageDeductionLabel.setText("Manage Deductions");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel1.add(manageDeductionLabel, gridBagConstraints);
 
-        jTextField4.setText("jTextField4");
+        addUpdateUsernameLabel1.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        addUpdateUsernameLabel1.setForeground(new java.awt.Color(255, 255, 255));
+        addUpdateUsernameLabel1.setText("PagIbig:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 5);
+        addUpdatePanel1.add(addUpdateUsernameLabel1, gridBagConstraints);
 
-        jTextField5.setText("jTextField5");
+        pagibigField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        pagibigField.setPreferredSize(new java.awt.Dimension(200, 30));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel1.add(pagibigField, gridBagConstraints);
 
-        javax.swing.GroupLayout manageDeductionsLayout = new javax.swing.GroupLayout(manageDeductions);
-        manageDeductions.setLayout(manageDeductionsLayout);
-        manageDeductionsLayout.setHorizontalGroup(
-            manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(manageDeductionsLayout.createSequentialGroup()
-                .addGap(117, 117, 117)
-                .addGroup(manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(manageDeductionsLayout.createSequentialGroup()
-                        .addComponent(jLabel10)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(manageDeductionsLayout.createSequentialGroup()
-                        .addComponent(jLabel9)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(459, Short.MAX_VALUE))
-        );
-        manageDeductionsLayout.setVerticalGroup(
-            manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addGroup(manageDeductionsLayout.createSequentialGroup()
-                .addGap(56, 56, 56)
-                .addGroup(manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel9)
-                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(18, 18, 18)
-                .addGroup(manageDeductionsLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(jLabel10)
-                    .addComponent(jTextField5, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addContainerGap(336, Short.MAX_VALUE))
-        );
+        addUpdatePasswordLabel2.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        addUpdatePasswordLabel2.setForeground(new java.awt.Color(255, 255, 255));
+        addUpdatePasswordLabel2.setText("PhilHealth:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 5, 5);
+        addUpdatePanel1.add(addUpdatePasswordLabel2, gridBagConstraints);
+
+        philhealthField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        philhealthField.setPreferredSize(new java.awt.Dimension(200, 30));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel1.add(philhealthField, gridBagConstraints);
+
+        addUpdateUsernameLabel2.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        addUpdateUsernameLabel2.setForeground(new java.awt.Color(255, 255, 255));
+        addUpdateUsernameLabel2.setText("SSS:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 5);
+        addUpdatePanel1.add(addUpdateUsernameLabel2, gridBagConstraints);
+
+        sssField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        sssField.setPreferredSize(new java.awt.Dimension(200, 30));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel1.add(sssField, gridBagConstraints);
+
+        jButton9.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
+        jButton9.setText("SAVE");
+        jButton9.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton9ActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 4;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel1.add(jButton9, gridBagConstraints);
+
+        manageDeductions.add(addUpdatePanel1);
 
         jTabbedPane1.addTab("Manage Deductions", manageDeductions);
 
@@ -2865,7 +2911,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, 1048, Short.MAX_VALUE)
+            .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, 1200, Short.MAX_VALUE)
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -2882,7 +2928,6 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         btnUpdate.setEnabled(false);
         btnRemove.setEnabled(false);
-        generatePayslipButton.setEnabled(false);
         unselectButton.setEnabled(false);
 
         card.show(jPanel3, "card4");
@@ -2984,7 +3029,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                 // ✅ Reset lahat ng fields, kasama na picture
                 clearFields();
-                generateQr();
+
                 fetch(); // refresh table data
             } else {
                 JOptionPane.showMessageDialog(this, "Failed to add employee!", "Error", JOptionPane.ERROR_MESSAGE);
@@ -3012,7 +3057,6 @@ public class DashboardFrame extends javax.swing.JFrame {
 
             btnUpdate.setEnabled(false);
             btnRemove.setEnabled(false);
-            generatePayslipButton.setEnabled(false);
             unselectButton.setEnabled(false);
             employeesTable.clearSelection();
 
@@ -3103,18 +3147,19 @@ public class DashboardFrame extends javax.swing.JFrame {
     private void jButton5ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton5ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card5");
-        btnRemove1.setEnabled(false);
         btnView1.setEnabled(false);
         unselectButton1.setEnabled(false);
         payrollTable.clearSelection();
+        fetchPayroll();
+        loadPayrollComboBox();
         this.revalidate();
         this.repaint();
-        loadPayrollComboBox();
     }//GEN-LAST:event_jButton5ActionPerformed
 
     private void jButton7ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton7ActionPerformed
         // TODO add your handling code here:
         card.show(jPanel3, "card6");
+        fetchDeductions();
         this.revalidate();
         this.repaint();
     }//GEN-LAST:event_jButton7ActionPerformed
@@ -3146,7 +3191,6 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                     btnUpdate.setEnabled(false);
                     btnRemove.setEnabled(false);
-                    generatePayslipButton.setEnabled(false);
                     unselectButton.setEnabled(false);
 
                     JOptionPane.showMessageDialog(this, "Employee Removed!");
@@ -3259,7 +3303,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
         btnUpdate.setEnabled(true);
         btnRemove.setEnabled(true);
-        generatePayslipButton.setEnabled(true);
         unselectButton.setEnabled(true);
     }//GEN-LAST:event_employeesTableMouseClicked
 
@@ -3366,6 +3409,108 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_resetDatabaseButtonActionPerformed
 
+    private void generatePayslipButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_generatePayslipButtonActionPerformed
+        // TODO add your handling code here:
+        recordPayslip();
+        card.show(jPanel3, "card5");
+    }//GEN-LAST:event_generatePayslipButtonActionPerformed
+
+    private void unselectButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_unselectButtonActionPerformed
+        // TODO add your handling code here:
+        btnUpdate.setEnabled(false);
+        btnRemove.setEnabled(false);
+        unselectButton.setEnabled(false);
+        employeesTable.clearSelection();
+    }//GEN-LAST:event_unselectButtonActionPerformed
+
+    private void btnView1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnView1ActionPerformed
+
+        // TODO add your handling code here:
+        int row = payrollTable.getSelectedRow();
+        if (row == -1) {
+            JOptionPane.showMessageDialog(this, "Please select an employee to view!");
+            return;
+        }
+
+        int id = Integer.parseInt(payrollTable.getValueAt(row, 0).toString());
+        selectedEmployeeId = id; // store globally
+
+        GeneratePaySlip(selectedEmployeeId);
+
+        // CREATE TEXT AREA
+        JTextArea textArea = new JTextArea(payslip);
+        textArea.setEditable(false);
+        textArea.setFont(new Font("Monospaced", Font.PLAIN, 14)); // para aligned tingnan
+
+        // MAKE IT SCROLLABLE
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setPreferredSize(new Dimension(450, 500));
+
+        // DISPLAY IN JOPTIONPANE
+        JOptionPane.showMessageDialog(
+                this,
+                scrollPane,
+                "PAYSLIP",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+
+    }//GEN-LAST:event_btnView1ActionPerformed
+
+    private void unselectButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_unselectButton1ActionPerformed
+        // TODO add your handling code here:
+        btnView1.setEnabled(false);
+        unselectButton1.setEnabled(false);
+        payrollTable.clearSelection();
+    }//GEN-LAST:event_unselectButton1ActionPerformed
+
+    private void payrollTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_payrollTableMouseClicked
+        // TODO add your handling code here:
+        int row = payrollTable.getSelectedRow();
+        if (row == -1) {
+            JOptionPane.showMessageDialog(this, "Please select an employee to edit!");
+            return;
+        }
+
+        int id = Integer.parseInt(payrollTable.getValueAt(row, 0).toString());
+        selectedEmployeeId = id; // store globally
+
+        btnView1.setEnabled(true);
+        unselectButton1.setEnabled(true);
+    }//GEN-LAST:event_payrollTableMouseClicked
+
+    private void jButton8ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton8ActionPerformed
+        // TODO add your handling code here:
+        if (timeInOut == null || !timeInOut.isDisplayable()) {
+            timeInOut = new TimeInOutFrame1(this);
+        }
+
+        timeInOut.setVisible(true);
+        timeInOut.toFront();
+
+        this.revalidate();
+        this.repaint();
+    }//GEN-LAST:event_jButton8ActionPerformed
+
+    private void btnSAVE1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSAVE1ActionPerformed
+        // TODO add your handling code here:
+        updateEmployee(selectedEmployeeId);
+    }//GEN-LAST:event_btnSAVE1ActionPerformed
+
+    private void formWindowClosed(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosed
+        // TODO add your handling code here:
+        if (timeInOut != null) {
+            timeInOut.webcam.close();
+            timeInOut.timer.stop();
+            timeInOut.dispose();
+            timeInOut = null;
+        }
+    }//GEN-LAST:event_formWindowClosed
+
+    private void recordButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_recordButtonActionPerformed
+        // TODO add your handling code here:
+        recordPayslip();
+    }//GEN-LAST:event_recordButtonActionPerformed
+
     private void printButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_printButtonActionPerformed
         PrinterJob job = PrinterJob.getPrinterJob();
         job.setJobName("Print");
@@ -3393,21 +3538,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_printButtonActionPerformed
 
-    private void generatePayslipButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_generatePayslipButtonActionPerformed
-        // TODO add your handling code here:
-        card.show(jPanel3, "card7");
-        GeneratePaySlip();
-    }//GEN-LAST:event_generatePayslipButtonActionPerformed
-
-    private void unselectButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_unselectButtonActionPerformed
-        // TODO add your handling code here:
-        btnUpdate.setEnabled(false);
-        btnRemove.setEnabled(false);
-        generatePayslipButton.setEnabled(false);
-        unselectButton.setEnabled(false);
-        employeesTable.clearSelection();
-    }//GEN-LAST:event_unselectButtonActionPerformed
-
     private void backButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backButtonActionPerformed
 
         btnUpdate.setEnabled(false);
@@ -3419,138 +3549,65 @@ public class DashboardFrame extends javax.swing.JFrame {
         receiptArea.setText("");
 
         card.show(jPanel3, "card4");
-
     }//GEN-LAST:event_backButtonActionPerformed
 
-    private void btnRemove1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnRemove1ActionPerformed
+    private void jButton9ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton9ActionPerformed
         // TODO add your handling code here:
-        try (Connection connection = DatabaseConnection.getConnection()) {
-            int confirm = JOptionPane.showConfirmDialog(
-                    null,
-                    "Are you sure you want to delete this payroll?",
-                    "Delete Payroll",
-                    JOptionPane.YES_NO_OPTION
-            );
+        String sss = sssField.getText();
+        String philhealth = philhealthField.getText();
+        String pagibig = pagibigField.getText();
 
-            if (confirm == JOptionPane.YES_OPTION) {
-                PreparedStatement ps = connection.prepareStatement(
-                        "DELETE FROM payroll_table WHERE employee_id=?"
-                );
-                ps.setInt(1, selectedEmployeeId);
+        if (sss.isEmpty() || philhealth.isEmpty() || pagibig.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "All Field Must be Field Out!");
+        } else {
+            if (JOptionPane.showConfirmDialog(this, "Are you sure you want to save this?", "Confirmation",
+                    JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
-                int deleted = ps.executeUpdate();
+                try (Connection connection = DatabaseConnection.getConnection()) {
+                    PreparedStatement pstmt = connection.prepareStatement("UPDATE deduction_rates_table SET sss_rate = ?, philhealth_rate = ?, pagibig_rate = ?  WHERE deduction_id = ?");
+                    pstmt.setString(1, sss);
+                    pstmt.setString(2, philhealth);
+                    pstmt.setString(3, pagibig);
+                    pstmt.setInt(4, 1);
+                    pstmt.executeUpdate();
 
-                if (deleted > 0) {
-                    JOptionPane.showMessageDialog(null, "Payroll deleted successfully!");
-                    fetchPayroll();
+                    JOptionPane.showMessageDialog(this, "Update Successful!");
 
-                    btnRemove1.setEnabled(false);
-                    btnView1.setEnabled(false);
-                    unselectButton1.setEnabled(false);
-                } else {
-                    JOptionPane.showMessageDialog(null, "Delete failed!");
+                    fetchDeductions();
+
+                } catch (SQLException ex) {
+                    Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
+                    JOptionPane.showMessageDialog(this, "Upadating Failed!\n" + ex.getLocalizedMessage());
                 }
             }
-
-        } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(null, "Error deleting payroll: " + ex.getMessage());
         }
+    }//GEN-LAST:event_jButton9ActionPerformed
 
-    }//GEN-LAST:event_btnRemove1ActionPerformed
+    private void deletePayrollButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_deletePayrollButtonActionPerformed
+        // TODO add your handling code here:
 
-    private void btnView1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnView1ActionPerformed
-        try (Connection connection = DatabaseConnection.getConnection()) {
-            // TODO add your handling code here:
-            int row = payrollTable.getSelectedRow();
-            if (row == -1) {
-                JOptionPane.showMessageDialog(this, "Please select an employee to edit!");
-                return;
+        if (JOptionPane.showConfirmDialog(this, "Are you sure you want to save this?", "Confirmation",
+                JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+
+            try (Connection connection = DatabaseConnection.getConnection()) {
+
+                // Delete existing payroll
+                try (PreparedStatement deleteStmt
+                        = connection.prepareStatement("DELETE FROM payroll_table WHERE pay_period = ?")) {
+                    deleteStmt.setString(1, startOfMonth.toString()+" to "+endOfMonth.toString());
+                    deleteStmt.executeUpdate();
+                }
+
+                JOptionPane.showMessageDialog(this, "Deleted!");
+
+                fetchPayroll();
+
+            } catch (SQLException ex) {
+                Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
+                JOptionPane.showMessageDialog(this, "Upadating Failed!\n" + ex.getLocalizedMessage());
             }
-
-            int id = Integer.parseInt(payrollTable.getValueAt(row, 0).toString());
-            selectedEmployeeId = id; // store globally
-
-            String empQuery = "SELECT * FROM payroll_table WHERE employee_id = ?";
-            PreparedStatement pstmt = connection.prepareStatement(empQuery);
-            pstmt.setInt(1, selectedEmployeeId);
-            ResultSet rs = pstmt.executeQuery();
-
-            if (rs.next()) {
-                // CREATE TEXT AREA
-                JTextArea textArea = new JTextArea(payslip);
-                textArea.setEditable(false);
-                textArea.setFont(new Font("Monospaced", Font.PLAIN, 12)); // para aligned tingnan
-
-                // MAKE IT SCROLLABLE
-                JScrollPane scrollPane = new JScrollPane(textArea);
-                scrollPane.setPreferredSize(new Dimension(450, 500));
-
-                // DISPLAY IN JOPTIONPANE
-                JOptionPane.showMessageDialog(
-                        this,
-                        scrollPane,
-                        "PAYSLIP",
-                        JOptionPane.INFORMATION_MESSAGE
-                );
-            }
-        } catch (SQLException ex) {
-            Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
         }
-    }//GEN-LAST:event_btnView1ActionPerformed
-
-    private void unselectButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_unselectButton1ActionPerformed
-        // TODO add your handling code here:
-        btnRemove1.setEnabled(false);
-        btnView1.setEnabled(false);
-        unselectButton1.setEnabled(false);
-        payrollTable.clearSelection();
-    }//GEN-LAST:event_unselectButton1ActionPerformed
-
-    private void payrollTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_payrollTableMouseClicked
-        // TODO add your handling code here:
-        int row = payrollTable.getSelectedRow();
-        if (row == -1) {
-            JOptionPane.showMessageDialog(this, "Please select an employee to edit!");
-            return;
-        }
-
-        int id = Integer.parseInt(payrollTable.getValueAt(row, 0).toString());
-        selectedEmployeeId = id; // store globally
-
-        btnRemove1.setEnabled(true);
-        btnView1.setEnabled(true);
-        unselectButton1.setEnabled(true);
-    }//GEN-LAST:event_payrollTableMouseClicked
-
-    private void recordButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_recordButtonActionPerformed
-        // TODO add your handling code here:
-        recordPayslip();
-    }//GEN-LAST:event_recordButtonActionPerformed
-
-    private void jButton8ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton8ActionPerformed
-        // TODO add your handling code here:
-        if (timeInOut == null || !timeInOut.isDisplayable()) {
-            timeInOut = new TimeInOutFrame1(this);
-        }
-
-        timeInOut.setVisible(true);
-        timeInOut.toFront();
-
-        this.revalidate();
-        this.repaint();
-    }//GEN-LAST:event_jButton8ActionPerformed
-
-    private void btnSAVE1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSAVE1ActionPerformed
-        // TODO add your handling code here:
-        updateEmployee(selectedEmployeeId);
-    }//GEN-LAST:event_btnSAVE1ActionPerformed
-
-    private void formWindowClosed(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosed
-        // TODO add your handling code here:
-        timeInOut.webcam.close();
-        timeInOut.timer.stop();
-        timeInOut.dispose();
-    }//GEN-LAST:event_formWindowClosed
+    }//GEN-LAST:event_deletePayrollButtonActionPerformed
 
     private void addButtonHoverEffects() {
         // lahat ng buttons mo lagay dito
@@ -3592,8 +3649,12 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JPanel addEmployeePanel;
     private javax.swing.JLabel addUpdateLabel;
     private javax.swing.JPanel addUpdatePanel;
+    private javax.swing.JPanel addUpdatePanel1;
     private javax.swing.JLabel addUpdatePasswordLabel;
+    private javax.swing.JLabel addUpdatePasswordLabel2;
     private javax.swing.JLabel addUpdateUsernameLabel;
+    private javax.swing.JLabel addUpdateUsernameLabel1;
+    private javax.swing.JLabel addUpdateUsernameLabel2;
     private javax.swing.JLabel address;
     private javax.swing.JPanel attendanceList;
     private javax.swing.JTable attendanceTable;
@@ -3605,7 +3666,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JButton btnCLEAR;
     private javax.swing.JButton btnExport;
     public javax.swing.JButton btnRemove;
-    private javax.swing.JButton btnRemove1;
     private javax.swing.JButton btnSAVE1;
     public javax.swing.JButton btnUpdate;
     private javax.swing.JButton btnUploadPhoto;
@@ -3631,6 +3691,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JPanel database;
     private com.toedter.calendar.JDateChooser dateBirth;
     private com.toedter.calendar.JDateChooser dateHired;
+    private javax.swing.JButton deletePayrollButton;
     private javax.swing.JLabel department;
     private javax.swing.JLabel email;
     public javax.swing.JTable employeesTable;
@@ -3649,11 +3710,11 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JButton jButton6;
     private javax.swing.JButton jButton7;
     private javax.swing.JButton jButton8;
+    private javax.swing.JButton jButton9;
     private javax.swing.JComboBox<String> jComboBox;
     private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
     private javax.swing.JLabel jLabel1;
-    private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
@@ -3661,7 +3722,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
     private javax.swing.JLabel jLabel8;
-    private javax.swing.JLabel jLabel9;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
     public javax.swing.JPanel jPanel3;
@@ -3679,8 +3739,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JTextField jTextField1;
     private javax.swing.JTextField jTextField2;
     private javax.swing.JTextField jTextField3;
-    private javax.swing.JTextField jTextField4;
-    private javax.swing.JTextField jTextField5;
+    private javax.swing.JLabel manageDeductionLabel;
     private javax.swing.JPanel manageDeductions;
     private javax.swing.JPanel manageUsersPanel;
     private javax.swing.JCheckBox manageUsersShowPassword;
@@ -3688,12 +3747,14 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JLabel name;
     private javax.swing.JPasswordField newPasswordField;
     private javax.swing.JLabel newPasswordLabel;
+    private javax.swing.JTextField pagibigField;
     private javax.swing.JPanel panel1;
     private javax.swing.JPanel panel2;
     private javax.swing.JPanel panel3;
     private javax.swing.JPasswordField passwordField;
     private javax.swing.JPanel payroll;
     private javax.swing.JTable payrollTable;
+    private javax.swing.JTextField philhealthField;
     private javax.swing.JLabel positionLabel;
     private javax.swing.JTextField preparedByField;
     private javax.swing.JLabel preparedByLabel;
@@ -3706,6 +3767,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JButton resetDatabaseButton;
     private javax.swing.JLabel salaryLabel;
     private javax.swing.JPanel settings;
+    private javax.swing.JTextField sssField;
     private javax.swing.JTextField startDateField;
     private javax.swing.JLabel startDateLabel;
     private javax.swing.JPanel tablePanel;

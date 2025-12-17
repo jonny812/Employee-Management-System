@@ -1,0 +1,654 @@
+package employee.management.system;
+
+import com.github.sarxos.webcam.Webcam;
+import com.github.sarxos.webcam.WebcamException;
+import com.github.sarxos.webcam.WebcamPanel;
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.LuminanceSource;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.NotFoundException;
+import com.google.zxing.Result;
+import com.google.zxing.client.j2se.BufferedImageLuminanceSource;
+import com.google.zxing.common.HybridBinarizer;
+import java.awt.Dimension;
+import java.awt.HeadlessException;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Time;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import javax.swing.ImageIcon;
+import javax.swing.JOptionPane;
+import javax.swing.Timer;
+
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/GUIForms/JFrame.java to edit this template
+ */
+/**
+ *
+ * @author Justine
+ */
+public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, ThreadFactory {
+
+    String time = LocalTime.now().format(DateTimeFormatter.ofPattern("hh:mm:ss a"));
+
+    DashboardFrame dashboard;
+
+    Webcam webcam;
+    WebcamPanel webcamPanel;
+    Executor executor = Executors.newSingleThreadExecutor(this);
+
+    Timer timer;
+
+    /**
+     * Creates new form TimeInOutFrame
+     */
+    public TimeInOutFrame1(DashboardFrame dashboard) {
+        this.dashboard = dashboard;
+        initComponents();
+
+        timer = new Timer(500, e -> {
+            dateLabel.setText(LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM dd, yyyy")));
+            timeLabel.setText(LocalTime.now().format(DateTimeFormatter.ofPattern("hh:mm:ss a")));
+        });
+        timer.start();
+
+        startCamera();
+
+        javax.swing.SwingUtilities.invokeLater(() -> employeeIdField.requestFocusInWindow());
+
+    }
+
+    private void startCamera() {
+        try {
+            Webcam.setDriver(new com.github.sarxos.webcam.ds.buildin.WebcamDefaultDriver());
+
+            if (Webcam.getWebcams().isEmpty()) {
+                jLabel1.setText("No webcam detected!");
+                JOptionPane.showMessageDialog(this, "No webcam detected!");
+                return;
+            }
+
+            // Get the default webcam
+            webcam = Webcam.getDefault();
+
+            if (webcam == null) {
+                jLabel1.setText("No webcam detected!");
+                System.out.println("No webcam detected!");
+                return;
+            }
+
+            // List all supported resolutions
+            Dimension[] supported = webcam.getViewSizes();
+            System.out.println("Webcam Supported resolutions:");
+            for (Dimension d : supported) {
+                System.out.println("- " + d.width + "x" + d.height);
+            }
+
+            // Pick the highest resolution
+            Dimension highest = supported[0];
+            for (Dimension d : supported) {
+                if (d.width * d.height > highest.width * highest.height) {
+                    highest = d;
+                }
+            }
+
+            // Set to the highest resolution
+            webcam.setViewSize(highest);
+
+            System.out.println("\nUsing highest resolution: "
+                    + highest.width + "x" + highest.height);
+
+            //webcam = Webcam.getDefault();
+            //webcam.setViewSize(WebcamResolution.VGA.getSize());
+            webcamPanel = new WebcamPanel(webcam);
+            webcamPanel.setMirrored(true);
+
+            camPanel.removeAll();
+            camPanel.add(webcamPanel, java.awt.BorderLayout.CENTER);
+            camPanel.revalidate();
+
+            executor.execute(this);
+
+        } catch (WebcamException | HeadlessException e) {
+            JOptionPane.showMessageDialog(this, "Error accessing camera: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void run() {
+        do {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            BufferedImage image = null;
+            if (webcam.isOpen()) {
+                if ((image = webcam.getImage()) == null) {
+                    continue;
+                }
+            } else {
+                break;
+            }
+
+            LuminanceSource source = new BufferedImageLuminanceSource(image);
+            BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(source));
+
+            try {
+                Result result = new MultiFormatReader().decode(bitmap);
+                if (result != null) {
+                    employeeIdField.setText(result.toString());
+                    timeInOut();
+
+                    camPanel.removeAll();
+                    camPanel.add(jLabel2, java.awt.BorderLayout.NORTH);
+                    camPanel.add(jLabel1, java.awt.BorderLayout.CENTER);
+                    camPanel.revalidate();
+                    camPanel.repaint();
+
+                    this.revalidate();
+                    this.repaint();
+
+                    try {
+                        Thread.sleep(3500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    camPanel.removeAll();
+                    camPanel.add(webcamPanel, java.awt.BorderLayout.CENTER);
+                    camPanel.revalidate();
+                    camPanel.repaint();
+
+                    this.revalidate();
+                    this.repaint();
+                }
+            } catch (NotFoundException e) {
+                // QR not found in frame
+            }
+        } while (true);
+    }
+
+    @Override
+    public Thread newThread(Runnable r) {
+        Thread t = new Thread(r, "QRScannerThread");
+        t.setDaemon(true);
+        return t;
+    }
+
+    public void timeInOut() {
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            String employeeId = employeeIdField.getText();
+            LocalDate today = LocalDate.now();
+            LocalTime now = LocalTime.now();
+
+            // Check if the employee_id exists
+            PreparedStatement pstmt = connection.prepareStatement(
+                    "SELECT * FROM employees_table WHERE employee_id=?"
+            );
+            pstmt.setString(1, employeeId);
+            ResultSet rs = pstmt.executeQuery();
+
+            if (rs.next()) {
+                String photoPath = rs.getString("photo_path");
+                String name = rs.getString("full_name");
+                double monthlySalary = rs.getDouble("salary");
+                String position = rs.getString("position");
+
+                nameLabel.setText(name);
+                photoLabel.setIcon(new ImageIcon(
+                        new ImageIcon(photoPath).getImage().getScaledInstance(149, 149, Image.SCALE_SMOOTH)
+                ));
+                photoLabel.setText("");
+
+                // Check if already timed in today
+                String checkQuery = "SELECT * FROM attendance_table WHERE employee_id=? AND date=?";
+                pstmt = connection.prepareStatement(checkQuery);
+                pstmt.setString(1, employeeId);
+                pstmt.setDate(2, java.sql.Date.valueOf(today));
+                rs = pstmt.executeQuery();
+
+                if (!rs.next()) {
+                    // Time In
+                    String insertQuery = "INSERT INTO attendance_table (employee_id, date, time_in, status) VALUES (?, ?, ?, ?)";
+                    pstmt = connection.prepareStatement(insertQuery);
+                    pstmt.setString(1, employeeId);
+                    pstmt.setDate(2, java.sql.Date.valueOf(today));
+                    pstmt.setTime(3, java.sql.Time.valueOf(now));
+                    pstmt.setString(4, "Present");
+                    pstmt.executeUpdate();
+
+                    jLabel2.setText("Time In");
+                    statusLabel.setText("STATUS: Time In, " + now.format(DateTimeFormatter.ofPattern("hh:mm:ss a")));
+
+                } else {
+                    Time timeIn = rs.getTime("time_in");
+                    Time timeOut = rs.getTime("time_out");
+
+                    if (timeOut == null) {
+                        // Calculate worked hours
+                        LocalTime tIn = timeIn.toLocalTime();
+                        LocalTime tOut = now;
+
+                        double hoursWorked = java.time.Duration.between(tIn, tOut).toMinutes() / 60.0;
+
+                        // Deduct lunch break (12:00–13:00) if applicable
+                        if (tIn.isBefore(LocalTime.NOON) && tOut.isAfter(LocalTime.of(13, 0))) {
+                            hoursWorked -= 1.0;
+                        }
+
+                        // Daily standard hours
+                        double standardHours = 8.0;
+                        double hourlyRate = monthlySalary / (22 * standardHours); // assuming 22 workdays/month
+
+                        double regularPay = Math.min(hoursWorked, standardHours) * hourlyRate;
+                        double otPay = Math.max(0, hoursWorked - standardHours) * hourlyRate * 1.25;
+
+                        // Late deduction (if time in > 8AM)
+                        double lateDeduct = Math.max(0, java.time.Duration.between(LocalTime.of(8, 0), tIn).toMinutes() / 60.0) * hourlyRate;
+
+                        // Absent deduction (if total hours < standardHours)
+                        double absentDeduct = Math.max(0, standardHours - hoursWorked) * hourlyRate;
+
+                        // Gross and deductions
+                        double grossPay = regularPay + otPay;
+                        double sss = monthlySalary * 0.05;
+                        double philHealth = monthlySalary * 0.025;
+                        double pagibig = Math.min(monthlySalary, 10000) * 0.02;
+                        double govContributions = sss + philHealth + pagibig;
+
+                        double taxableIncome = grossPay - govContributions;
+                        double tax = computeWithholdingTaxMonthly(taxableIncome);
+                        double totalDeduct = govContributions + tax + absentDeduct + lateDeduct;
+                        double netPay = grossPay - totalDeduct;
+
+                        // Update attendance
+                        String updateQuery = "UPDATE attendance_table SET time_out=?, total_hours=? WHERE employee_id=? AND date=?";
+                        pstmt = connection.prepareStatement(updateQuery);
+                        pstmt.setTime(1, java.sql.Time.valueOf(now));
+                        pstmt.setDouble(2, hoursWorked);
+                        pstmt.setString(3, employeeId);
+                        pstmt.setDate(4, java.sql.Date.valueOf(today));
+                        pstmt.executeUpdate();
+
+                        jLabel2.setText("Time Out");
+                        statusLabel.setText("STATUS: Time Out, " + now.format(DateTimeFormatter.ofPattern("hh:mm:ss a")));
+
+                        // -------------------------
+                        // PAYROLL UPDATE (Monthly Cumulative)
+                        // -------------------------
+                        String payPeriod = today.getMonth() + " " + today.getYear();
+
+                        // Check if payroll exists
+                        String checkPayroll = "SELECT * FROM payroll_table WHERE employee_id=? AND pay_period=?";
+                        PreparedStatement checkStmt = connection.prepareStatement(checkPayroll);
+                        checkStmt.setString(1, employeeId);
+                        checkStmt.setString(2, payPeriod);
+                        ResultSet rsPayroll = checkStmt.executeQuery();
+
+                        if (rsPayroll.next()) {
+                            // UPDATE cumulative payroll
+                            String updatePayroll = "UPDATE payroll_table SET "
+                                    + "regular_pay = regular_pay + ?, "
+                                    + "ot_pay = ot_pay + ?, "
+                                    + "late_deduct = late_deduct + ?, "
+                                    + "absent_deduct = absent_deduct + ?, "
+                                    + "gross_pay = gross_pay + ?, "
+                                    + "gov_contributions = gov_contributions + ?, "
+                                    + "total_deduct = total_deduct + ?, "
+                                    + "net_pay = net_pay + ? "
+                                    + "WHERE employee_id=? AND pay_period=?";
+                            PreparedStatement pstmtUpdate = connection.prepareStatement(updatePayroll);
+                            pstmtUpdate.setDouble(1, regularPay);
+                            pstmtUpdate.setDouble(2, otPay);
+                            pstmtUpdate.setDouble(3, lateDeduct);
+                            pstmtUpdate.setDouble(4, absentDeduct);
+                            pstmtUpdate.setDouble(5, grossPay);
+                            pstmtUpdate.setDouble(6, govContributions);
+                            pstmtUpdate.setDouble(7, totalDeduct);
+                            pstmtUpdate.setDouble(8, netPay);
+                            pstmtUpdate.setString(9, employeeId);
+                            pstmtUpdate.setString(10, payPeriod);
+                            pstmtUpdate.executeUpdate();
+                        } else {
+                            // INSERT new payroll row
+                            String insertPayroll = "INSERT INTO payroll_table (employee_id, employee_name, position, "
+                                    + "regular_pay, ot_pay, late_deduct, absent_deduct, gross_pay, gov_contributions, "
+                                    + "total_deduct, net_pay, pay_period) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                            PreparedStatement pstmtInsert = connection.prepareStatement(insertPayroll);
+                            pstmtInsert.setString(1, employeeId);
+                            pstmtInsert.setString(2, name);
+                            pstmtInsert.setString(3, position);
+                            pstmtInsert.setDouble(4, regularPay);
+                            pstmtInsert.setDouble(5, otPay);
+                            pstmtInsert.setDouble(6, lateDeduct);
+                            pstmtInsert.setDouble(7, absentDeduct);
+                            pstmtInsert.setDouble(8, grossPay);
+                            pstmtInsert.setDouble(9, govContributions);
+                            pstmtInsert.setDouble(10, totalDeduct);
+                            pstmtInsert.setDouble(11, netPay);
+                            pstmtInsert.setString(12, payPeriod);
+                            pstmtInsert.executeUpdate();
+                        }
+
+                    } else {
+                        statusLabel.setText("STATUS: Already Timed Out!");
+                    }
+                }
+            } else {
+                jLabel2.setText("Not Found!");
+                statusLabel.setText("STATUS: No Record Found!");
+            }
+
+            // Reset fields after 3.5s
+            javax.swing.Timer resetTimer = new javax.swing.Timer(3500, e -> {
+                employeeIdField.setText("");
+                nameLabel.setText("NAME");
+                photoLabel.setIcon(null);
+                photoLabel.setText("PHOTO");
+                statusLabel.setText("STATUS:");
+            });
+            resetTimer.setRepeats(false);
+            resetTimer.start();
+
+            dashboard.fetchAttendanceList();
+
+        } catch (NumberFormatException | SQLException ex) {
+            Logger.getLogger(TimeInOutFrame1.class.getName()).log(Level.SEVERE, null, ex);
+            JOptionPane.showMessageDialog(this, "Error: " + ex.getMessage());
+        }
+    }
+    private static double computeWithholdingTaxMonthly(double taxableIncome) {
+        // Based on 2025 TRAIN withholding tax table (monthly income)
+        // 0 – 20,833: 0%
+        // 20,833.01 – 33,333: 15% of excess over 20,833
+        // 33,333.01 – 66,666: 2,500 + 20% of excess over 33,333
+        // 66,666.01 – 166,666: 10,833.33 + 25% of excess over 66,666
+        // 166,666.01 – 666,666: 40,833.33 + 30% of excess over 166,666
+        // above 666,666: 200,833.33 + 35% of excess over 666,666
+
+        double tax = 0.0;
+        if (taxableIncome <= 20833) {
+            tax = 0;
+        } else if (taxableIncome <= 33333) {
+            tax = (taxableIncome - 20833) * 0.15;
+        } else if (taxableIncome <= 66666) {
+            tax = 2500 + (taxableIncome - 33333) * 0.20;
+        } else if (taxableIncome <= 166666) {
+            tax = 10833.33 + (taxableIncome - 66666) * 0.25;
+        } else if (taxableIncome <= 666666) {
+            tax = 40833.33 + (taxableIncome - 166666) * 0.30;
+        } else {
+            tax = 200833.33 + (taxableIncome - 666666) * 0.35;
+        }
+        return tax;
+    }
+    /**
+     * This method is called from within the constructor to initialize the form.
+     * WARNING: Do NOT modify this code. The content of this method is always
+     * regenerated by the Form Editor.
+     */
+    @SuppressWarnings("unchecked")
+    // <editor-fold defaultstate="collapsed" desc="Generated Code">//GEN-BEGIN:initComponents
+    private void initComponents() {
+        java.awt.GridBagConstraints gridBagConstraints;
+
+        timeInOutHeaderLabel = new javax.swing.JLabel();
+        centerPanel = new javax.swing.JPanel();
+        bagPanel = new javax.swing.JPanel();
+        dateTimePanel = new javax.swing.JPanel();
+        dateLabel = new javax.swing.JLabel();
+        timeLabel = new javax.swing.JLabel();
+        westPanel = new javax.swing.JPanel();
+        photoLabel = new javax.swing.JLabel();
+        nameLabel = new javax.swing.JLabel();
+        statusLabel = new javax.swing.JLabel();
+        employeeIdPanel = new javax.swing.JPanel();
+        employeeIdLabel = new javax.swing.JLabel();
+        employeeIdField = new javax.swing.JTextField();
+        backButton = new javax.swing.JButton();
+        timeInOutButton = new javax.swing.JButton();
+        webCamPanel = new javax.swing.JPanel();
+        camPanel = new javax.swing.JPanel();
+        jLabel2 = new javax.swing.JLabel();
+        jLabel1 = new javax.swing.JLabel();
+
+        setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
+        setTitle("Time In/Out");
+        setMinimumSize(new java.awt.Dimension(900, 600));
+        setPreferredSize(new java.awt.Dimension(1000, 700));
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosing(java.awt.event.WindowEvent evt) {
+                formWindowClosing(evt);
+            }
+        });
+
+        timeInOutHeaderLabel.setFont(new java.awt.Font("Segoe UI", 1, 48)); // NOI18N
+        timeInOutHeaderLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        timeInOutHeaderLabel.setText("TIME IN/OUT");
+        timeInOutHeaderLabel.setMaximumSize(new java.awt.Dimension(100, 100));
+        timeInOutHeaderLabel.setMinimumSize(new java.awt.Dimension(100, 100));
+        timeInOutHeaderLabel.setPreferredSize(new java.awt.Dimension(100, 100));
+        getContentPane().add(timeInOutHeaderLabel, java.awt.BorderLayout.PAGE_START);
+
+        centerPanel.setMinimumSize(new java.awt.Dimension(900, 600));
+        centerPanel.setOpaque(false);
+        centerPanel.setPreferredSize(new java.awt.Dimension(800, 600));
+        centerPanel.setLayout(new java.awt.GridBagLayout());
+
+        bagPanel.setMinimumSize(new java.awt.Dimension(900, 500));
+        bagPanel.setOpaque(false);
+        bagPanel.setPreferredSize(new java.awt.Dimension(1200, 700));
+        bagPanel.setLayout(new java.awt.GridBagLayout());
+
+        dateTimePanel.setMinimumSize(new java.awt.Dimension(800, 80));
+        dateTimePanel.setOpaque(false);
+        dateTimePanel.setPreferredSize(new java.awt.Dimension(1000, 100));
+        dateTimePanel.setLayout(new java.awt.GridBagLayout());
+
+        dateLabel.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        dateLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        dateLabel.setText("DATE");
+        dateTimePanel.add(dateLabel, new java.awt.GridBagConstraints());
+
+        timeLabel.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        timeLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        timeLabel.setText("TIME");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        dateTimePanel.add(timeLabel, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.gridwidth = 2;
+        bagPanel.add(dateTimePanel, gridBagConstraints);
+
+        westPanel.setMinimumSize(new java.awt.Dimension(400, 400));
+        westPanel.setOpaque(false);
+        westPanel.setPreferredSize(new java.awt.Dimension(600, 500));
+        westPanel.setLayout(new java.awt.GridBagLayout());
+
+        photoLabel.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        photoLabel.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        photoLabel.setText("PHOTO");
+        photoLabel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(153, 153, 153)));
+        photoLabel.setMaximumSize(new java.awt.Dimension(150, 150));
+        photoLabel.setMinimumSize(new java.awt.Dimension(150, 150));
+        photoLabel.setPreferredSize(new java.awt.Dimension(150, 150));
+        westPanel.add(photoLabel, new java.awt.GridBagConstraints());
+
+        nameLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        nameLabel.setText("NAME");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        westPanel.add(nameLabel, gridBagConstraints);
+
+        statusLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        statusLabel.setText("STATUS:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        westPanel.add(statusLabel, gridBagConstraints);
+
+        employeeIdPanel.setOpaque(false);
+        employeeIdPanel.setLayout(new java.awt.GridBagLayout());
+
+        employeeIdLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        employeeIdLabel.setText("Employee ID:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 10);
+        employeeIdPanel.add(employeeIdLabel, gridBagConstraints);
+
+        employeeIdField.setFont(new java.awt.Font("Segoe UI", 0, 18)); // NOI18N
+        employeeIdField.setMinimumSize(new java.awt.Dimension(200, 35));
+        employeeIdField.setPreferredSize(new java.awt.Dimension(250, 35));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.NORTHWEST;
+        employeeIdPanel.add(employeeIdField, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        westPanel.add(employeeIdPanel, gridBagConstraints);
+
+        backButton.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        backButton.setText("BACK");
+        backButton.setPreferredSize(new java.awt.Dimension(100, 40));
+        backButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                backButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 4;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        westPanel.add(backButton, gridBagConstraints);
+
+        timeInOutButton.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        timeInOutButton.setText("TIME IN/OUT");
+        timeInOutButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        timeInOutButton.setPreferredSize(new java.awt.Dimension(150, 40));
+        timeInOutButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                timeInOutButtonActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 4;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        westPanel.add(timeInOutButton, gridBagConstraints);
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        bagPanel.add(westPanel, gridBagConstraints);
+
+        webCamPanel.setMinimumSize(new java.awt.Dimension(400, 400));
+        webCamPanel.setOpaque(false);
+        webCamPanel.setPreferredSize(new java.awt.Dimension(600, 500));
+        webCamPanel.setLayout(new java.awt.GridBagLayout());
+
+        camPanel.setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(153, 153, 153)));
+        camPanel.setMaximumSize(new java.awt.Dimension(600, 460));
+        camPanel.setMinimumSize(new java.awt.Dimension(400, 300));
+        camPanel.setOpaque(false);
+        camPanel.setPreferredSize(new java.awt.Dimension(600, 460));
+        camPanel.setLayout(new java.awt.BorderLayout());
+
+        jLabel2.setFont(new java.awt.Font("Segoe UI", 1, 36)); // NOI18N
+        jLabel2.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        jLabel2.setText("Time In/Out");
+        camPanel.add(jLabel2, java.awt.BorderLayout.PAGE_START);
+
+        jLabel1.setFont(new java.awt.Font("Segoe UI", 1, 36)); // NOI18N
+        jLabel1.setHorizontalAlignment(javax.swing.SwingConstants.CENTER);
+        jLabel1.setText("Please wait...");
+        camPanel.add(jLabel1, java.awt.BorderLayout.CENTER);
+
+        webCamPanel.add(camPanel, new java.awt.GridBagConstraints());
+
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        bagPanel.add(webCamPanel, gridBagConstraints);
+
+        centerPanel.add(bagPanel, new java.awt.GridBagConstraints());
+
+        getContentPane().add(centerPanel, java.awt.BorderLayout.CENTER);
+
+        pack();
+    }// </editor-fold>//GEN-END:initComponents
+
+    private void backButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backButtonActionPerformed
+        if (JOptionPane.showConfirmDialog(this, "Are you sure you want to go Back?",
+                "Confimation", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+
+            timer.stop();
+            webcam.close();
+
+            this.dispose();
+
+        }
+    }//GEN-LAST:event_backButtonActionPerformed
+
+    private void timeInOutButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_timeInOutButtonActionPerformed
+        timeInOut();
+    }//GEN-LAST:event_timeInOutButtonActionPerformed
+
+    private void formWindowClosing(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosing
+        // TODO add your handling code here:
+
+        timer.stop();
+        webcam.close();
+
+    }//GEN-LAST:event_formWindowClosing
+
+    // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JButton backButton;
+    private javax.swing.JPanel bagPanel;
+    private javax.swing.JPanel camPanel;
+    private javax.swing.JPanel centerPanel;
+    private javax.swing.JLabel dateLabel;
+    private javax.swing.JPanel dateTimePanel;
+    private javax.swing.JTextField employeeIdField;
+    private javax.swing.JLabel employeeIdLabel;
+    private javax.swing.JPanel employeeIdPanel;
+    private javax.swing.JLabel jLabel1;
+    private javax.swing.JLabel jLabel2;
+    private javax.swing.JLabel nameLabel;
+    private javax.swing.JLabel photoLabel;
+    private javax.swing.JLabel statusLabel;
+    private javax.swing.JButton timeInOutButton;
+    private javax.swing.JLabel timeInOutHeaderLabel;
+    private javax.swing.JLabel timeLabel;
+    private javax.swing.JPanel webCamPanel;
+    private javax.swing.JPanel westPanel;
+    // End of variables declaration//GEN-END:variables
+}

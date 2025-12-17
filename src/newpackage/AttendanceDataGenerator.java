@@ -1,6 +1,6 @@
 package newpackage;
 
-
+import employee.management.system.DatabaseConnection;
 import java.sql.*;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
@@ -8,13 +8,9 @@ import java.util.Random;
 
 public class AttendanceDataGenerator {
 
-    private static final String DB_URL = "jdbc:mysql://localhost:3306/employee_management_database";
-    private static final String DB_USER = "root";
-    private static final String DB_PASS = "";
-    
     public static void main(String[] args) {
-        try (Connection conn = DriverManager.getConnection(DB_URL, DB_USER, DB_PASS)) {
-            Statement stmt = conn.createStatement();
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            Statement stmt = connection.createStatement();
             generateSampleAttendance(stmt);
             System.out.println("Sample attendance data generated successfully!");
         } catch (SQLException e) {
@@ -59,7 +55,7 @@ public class AttendanceDataGenerator {
 
                     String amStatus = amIn.isBefore(LocalTime.of(8, 0)) ? "" : "";
                     String pmStatus = pmOut.isAfter(LocalTime.of(17, 30)) ? "" : "";
-                    String status = totalHours >= 8.0 ? "Present" : "Present";
+                    String status = totalHours >= 8.0 ? "Present" : "";
 
                     insertSQL.append(String.format(
                             "(%d, '%s', '%s', '%s', '%s', '%s', %.2f, '%s', '%s', '%s'), ",

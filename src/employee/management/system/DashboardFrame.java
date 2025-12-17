@@ -51,6 +51,7 @@ import javax.swing.SortOrder;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.prefs.Preferences;
+import javax.swing.JEditorPane;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 
@@ -325,21 +326,6 @@ public class DashboardFrame extends javax.swing.JFrame {
             // Start employee_id at 1000 for cleaner IDs
             stmt.executeUpdate("ALTER TABLE employees_table AUTO_INCREMENT = 1000;");
 
-            // -------------------- INSERT SAMPLE EMPLOYEES --------------------
-            String insertEmployees = "INSERT IGNORE INTO employees_table "
-                    + "(photo_path, full_name, birth_date, gender, address, contact_number, email_address, position, department, salary, hired_date) VALUES "
-                    + "('photos/emp1.jpg', 'Juan Dela Cruz', '1995-04-12', 'Male', 'Manila City', '09171234567', 'juan.cruz@example.com', 'Software Engineer', 'Information Technology (IT)', 35000.00, '2022-03-10'), "
-                    + "('photos/emp2.jpg', 'Maria Santos', '1998-07-21', 'Female', 'Quezon City', '09281234567', 'maria.santos@example.com', 'HR Officer', 'Human Resources', 30000.00, '2021-11-05'), "
-                    + "('photos/emp3.jpg', 'Mark Reyes', '1992-01-18', 'Male', 'Pasig City', '09181231234', 'mark.reyes@example.com', 'Accountant', 'Finance & Accounting', 32000.00, '2020-06-15'), "
-                    + "('photos/emp4.jpg', 'Angela Cruz', '1996-10-04', 'Female', 'Cebu City', '09351231231', 'angela.cruz@example.com', 'Graphic Designer', 'Marketing', 28000.00, '2023-01-12'), "
-                    + "('photos/emp5.jpg', 'John Bautista', '1993-03-09', 'Male', 'Davao City', '09491234567', 'john.bautista@example.com', 'IT Support', 'Information Technology (IT)', 26000.00, '2021-05-20'), "
-                    + "('photos/emp6.jpg', 'Catherine Lim', '1997-12-11', 'Female', 'Makati City', '09291231231', 'catherine.lim@example.com', 'Sales Associate', 'Sales', 25000.00, '2022-10-01'), "
-                    + "('photos/emp7.jpg', 'Joseph Tan', '1998-02-27', 'Male', 'Taguig City', '09191231212', 'joseph.tan@example.com', 'Project Manager', 'Administration & Operations', 45000.00, '2019-04-08'), "
-                    + "('photos/emp8.jpg', 'Elaine Garcia', '1999-05-30', 'Female', 'Las Piñas City', '09301231231', 'elaine.garcia@example.com', 'Receptionist', 'Front Desk', 20000.00, '2023-08-03'), "
-                    + "('photos/emp9.jpg', 'Patrick Villanueva', '1994-09-23', 'Male', 'Caloocan City', '09181231234', 'patrick.villanueva@example.com', 'Network Technician', 'Information Technology (IT)', 27000.00, '2021-09-10'), "
-                    + "('photos/emp10.jpg', 'Liza Ramos', '1998-06-25', 'Female', 'Baguio City', '09271231231', 'liza.ramos@example.com', 'Administrative Assistant', 'Administration & Operations', 23000.00, '2020-02-17') ";
-            stmt.executeUpdate(insertEmployees);
-
             // -------------------- ATTENDANCE TABLE --------------------
             String createAttendanceTable = "CREATE TABLE IF NOT EXISTS attendance_table ("
                     + "attendance_id INT AUTO_INCREMENT PRIMARY KEY, "
@@ -357,24 +343,6 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "ON DELETE CASCADE ON UPDATE CASCADE)";
             stmt.execute(createAttendanceTable);
 
-            // -------------------- TAX BRACKETS TABLE --------------------
-//            String createTaxBracketsTable = "CREATE TABLE IF NOT EXISTS tax_brackets ("
-//                    + "bracket_id INT AUTO_INCREMENT PRIMARY KEY, "
-//                    + "min_income DOUBLE NOT NULL, "
-//                    + "max_income DOUBLE NOT NULL, "
-//                    + "tax_rate DOUBLE NOT NULL, "
-//                    + "base_tax DOUBLE DEFAULT 0, "
-//                    + "UNIQUE(min_income, max_income))";
-//            stmt.execute(createTaxBracketsTable);
-            // Insert default tax brackets
-//            String insertBrackets = "INSERT IGNORE INTO tax_brackets (min_income, max_income, tax_rate, base_tax) VALUES "
-//                    + "(0, 20833, 0, 0), "
-//                    + "(20833.01, 33333, 0.15, 0), "
-//                    + "(33333.01, 66666, 0.20, 2500), "
-//                    + "(66666.01, 166666, 0.25, 10833.33), "
-//                    + "(166666.01, 666666, 0.30, 40833.33), "
-//                    + "(666666.01, 999999999, 0.35, 200833.33)";
-//            stmt.execute(insertBrackets);
             // -------------------- DEDUCTIONS TABLE --------------------
             String createDeductionsTable = "CREATE TABLE IF NOT EXISTS deduction_rates_table ("
                     + "deduction_rate_id INT AUTO_INCREMENT PRIMARY KEY, "
@@ -388,18 +356,6 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "(0.045, 0.025, 0.02)";
             stmt.execute(insertRates);
 
-            // -------------------- TRIGGER TO CALCULATE TAX --------------------
-//            String createTaxTrigger = "CREATE TRIGGER IF NOT EXISTS calculate_tax_trigger "
-//                    + "BEFORE INSERT ON payroll_table "
-//                    + "FOR EACH ROW "
-//                    + "BEGIN "
-//                    + "  SELECT (base_tax + (NEW.taxable_income - min_income) * tax_rate) INTO @calculated_tax "
-//                    + "  FROM tax_brackets "
-//                    + "  WHERE NEW.taxable_income >= min_income AND NEW. taxable_income <= max_income "
-//                    + "  LIMIT 1; "
-//                    + "  SET NEW.tax = COALESCE(@calculated_tax, 0); "
-//                    + "END";
-//            stmt.execute(createTaxTrigger);
             // -------------------- PAYROLL TABLE --------------------
             String createPayrollTable = "CREATE TABLE IF NOT EXISTS payroll_table ("
                     + "id INT AUTO_INCREMENT PRIMARY KEY, "
@@ -824,49 +780,79 @@ public class DashboardFrame extends javax.swing.JFrame {
                 ResultSet rs = pstmt.executeQuery();
 
                 if (rs.next()) {
-
                     payslip
-                            = "----------------------------------------\n"
-                            + "                PAYSLIP\n"
-                            + "----------------------------------------\n"
-                            + "EMPLOYEE INFO\n"
-                            + "----------------------------------------\n"
-                            + "Employee Name      : " + rs.getString("employee_name") + "\n"
-                            + "Employee ID        : " + rs.getInt("employee_id") + "\n"
-                            + "Position           : " + rs.getString("position") + "\n"
-                            + "Monthly Salary     : " + df.format(rs.getDouble("monthly_salary")) + "\n"
-                            + "Total Present      : " + rs.getInt("total_present") + "\n"
-                            + "Total Absent       : " + rs.getInt("total_absent") + "\n"
-                            + "Total Hours Worked : " + df.format(rs.getDouble("total_hours_worked")) + "\n"
-                            + "Standard Work Days : " + rs.getInt("standard_work_days") + "\n"
-                            + "Standard Hours     : " + rs.getInt("standard_hours") + "\n"
-                            + "Hourly Rate        : " + df.format(rs.getDouble("hourly_rate")) + "\n"
-                            + "----------------------------------------\n"
-                            + "EARNINGS\n"
-                            + "----------------------------------------\n"
-                            + "Gross Pay          : " + df.format(rs.getDouble("gross_pay")) + "\n"
-                            + "----------------------------------------\n"
-                            + "DEDUCTIONS\n"
-                            + "----------------------------------------\n"
-                            + "SSS                : " + df.format(rs.getDouble("sss")) + "\n"
-                            + "PhilHealth         : " + df.format(rs.getDouble("philhealth")) + "\n"
-                            + "Pag-IBIG           : " + df.format(rs.getDouble("pagibig")) + "\n"
-                            + "Taxable Income     : " + df.format(rs.getDouble("taxable_income")) + "\n"
-                            + "Tax                : " + df.format(rs.getDouble("tax")) + "\n"
-                            + "Total Deduction    : " + df.format(rs.getDouble("total_deduction")) + "\n"
-                            + "----------------------------------------\n"
-                            + "NET PAY            : " + df.format(rs.getDouble("net_pay")) + "\n"
-                            + "----------------------------------------\n"
-                            + "Pay Period         : " + rs.getString("pay_period") + "\n"
-                            + "Prepared By        : " + rs.getString("prepared_by") + "\n";
+                            = "<html>"
+                            + "<body style='font-family: monospace; font-size: 12px;'>"
+                            /* ===== TITLE ===== */
+                            + "<h1 style='text-align:center; font-weight:bold;'>EMSys</h1>"
+                            + "<div style='text-align:center; font-weight:bold;'>"
+                            + "Project 4, Daet, Camarines Norte, Philippines<br>"
+                            + "PAYSLIP</div>"
+                            + "<hr>"
+                            /* ===== EMPLOYEE INFO ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
+                            + "<tr><th colspan='2' style='text-align:left;'>EMPLOYEE INFORMATION</th></tr>"
+                            + "<tr><td><b>Employee ID</b></td><td>" + rs.getInt("employee_id") + "</td></tr>"
+                            + "<tr><td><b>Employee Name</b></td><td>" + rs.getString("employee_name") + "</td></tr>"
+                            + "<tr><td><b>Position</b></td><td>" + rs.getString("position") + "</td></tr>"
+                            + "<tr><td><b>Monthly Rate</b></td><td>" + df.format(rs.getDouble("monthly_salary")) + "</td></tr>"
+                            + "<tr><td><b>Pay Period</b></td><td>" + rs.getString("pay_period") + "</td></tr>"
+                            + "</table>"
+                            + "<br>"
+                            /* ===== WORK SUMMARY ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
+                            + "<tr><th colspan='2' style='text-align:left;'>WORK SUMMARY</th></tr>"
+                            + "<tr><td><b>Total Present</b></td><td>" + rs.getInt("total_present") + " days</td></tr>"
+                            + "<tr><td><b>Total Absent</b></td><td>" + rs.getInt("total_absent") + " days</td></tr>"
+                            + "<tr><td><b>Total Hours Worked</b></td><td>"
+                            + df.format(rs.getDouble("total_hours_worked")) + " hrs</td></tr>"
+                            + "<tr><td><b>Standard Work Days</b></td><td>" + rs.getInt("standard_work_days") + "</td></tr>"
+                            + "<tr><td><b>Standard Hours</b></td><td>" + rs.getInt("standard_hours") + "</td></tr>"
+                            + "<tr><td><b>Hourly Rate</b></td><td>" + df.format(rs.getDouble("hourly_rate")) + "</td></tr>"
+                            + "</table>"
+                            + "<br>"
+                            /* ===== EARNINGS ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
+                            + "<tr><th colspan='2' style='text-align:left;'>EARNINGS</th></tr>"
+                            + "<tr><td><b>Gross Pay</b></td><td>" + df.format(rs.getDouble("gross_pay")) + "</td></tr>"
+                            + "</table>"
+                            + "<br>"
+                            /* ===== DEDUCTIONS ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
+                            + "<tr><th colspan='2' style='text-align:left;'>DEDUCTIONS</th></tr>"
+                            + "<tr><td><b>SSS</b></td><td>" + df.format(rs.getDouble("sss")) + "</td></tr>"
+                            + "<tr><td><b>PhilHealth</b></td><td>" + df.format(rs.getDouble("philhealth")) + "</td></tr>"
+                            + "<tr><td><b>Pag-IBIG</b></td><td>" + df.format(rs.getDouble("pagibig")) + "</td></tr>"
+                            + "<tr><td><b>Taxable Income</b></td><td>" + df.format(rs.getDouble("taxable_income")) + "</td></tr>"
+                            + "<tr><td><b>Tax</b></td><td>" + df.format(rs.getDouble("tax")) + "</td></tr>"
+                            + "<tr><td><b>Total Deduction</b></td><td>"
+                            + df.format(rs.getDouble("total_deduction")) + "</td></tr>"
+                            + "</table>"
+                            + "<br>"
+                            /* ===== NET PAY ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='8'>"
+                            + "<tr>"
+                            + "<th style='text-align:left;'>NET PAY</th>"
+                            + "<th style='text-align:right; font-size:14px;'>"
+                            + df.format(rs.getDouble("net_pay"))
+                            + "</th>"
+                            + "</tr>"
+                            + "</table>"
+                            + "<br>"
+                            /* ===== FOOTER ===== */
+                            + "<table width='100%' cellspacing='0' cellpadding='4'>"
+                            + "<tr><td><b>Prepared By</b>: " + rs.getString("prepared_by") + "</td></tr>"
+                            + "</table>"
+                            + "</body></html>";
 
                 } else {
-                    payslip = "No payslip found for this employee.";
+                    payslip = "<html><body>No payslip found for this employee.</body></html>";
                 }
             }
 
         } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this, "Error generating payslip: " + ex.getMessage());
+            JOptionPane.showMessageDialog(this,
+                    "Error generating payslip: " + ex.getMessage());
         }
     }
 
@@ -886,7 +872,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             // Delete existing payroll
             try (PreparedStatement deleteStmt
                     = connection.prepareStatement("DELETE FROM payroll_table WHERE pay_period = ?")) {
-                deleteStmt.setDate(1, Date.valueOf(today));
+                deleteStmt.setString(1, startOfMonth.toString() + " to " + endOfMonth.toString());
                 deleteStmt.executeUpdate();
             }
 
@@ -1012,7 +998,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                         insertStmt.setDouble(17, totalDeductions);
                         insertStmt.setDouble(18, netPay);
                         insertStmt.setString(19, startOfMonth.toString() + " to " + endOfMonth.toString());
-                        insertStmt.setString(20, preparedByField.getText());
+                        insertStmt.setString(20, "Admin");
 
                         insertStmt.executeUpdate();
                     }
@@ -3438,21 +3424,35 @@ public class DashboardFrame extends javax.swing.JFrame {
         GeneratePaySlip(selectedEmployeeId);
 
         // CREATE TEXT AREA
-        JTextArea textArea = new JTextArea(payslip);
-        textArea.setEditable(false);
-        textArea.setFont(new Font("Monospaced", Font.PLAIN, 14)); // para aligned tingnan
+        JEditorPane editorPane = new JEditorPane();
+        editorPane.setContentType("text/html");
+        editorPane.setText(payslip);
+        editorPane.setEditable(false);
 
-        // MAKE IT SCROLLABLE
-        JScrollPane scrollPane = new JScrollPane(textArea);
-        scrollPane.setPreferredSize(new Dimension(450, 500));
+        JScrollPane scrollPane = new JScrollPane(editorPane);
+        scrollPane.setPreferredSize(new Dimension(400, 500));
 
-        // DISPLAY IN JOPTIONPANE
-        JOptionPane.showMessageDialog(
+        Object[] options = {"Print", "Close"};
+
+        int choice = JOptionPane.showOptionDialog(
                 this,
                 scrollPane,
                 "PAYSLIP",
-                JOptionPane.INFORMATION_MESSAGE
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.INFORMATION_MESSAGE,
+                null,
+                options,
+                options[0]
         );
+
+        if (choice == 0) {
+            try {
+                editorPane.print();
+            } catch (PrinterException ex) {
+                JOptionPane.showMessageDialog(this, "Print error: " + ex.getMessage());
+            }
+        }
+
 
     }//GEN-LAST:event_btnView1ActionPerformed
 
@@ -3564,7 +3564,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                     JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
                 try (Connection connection = DatabaseConnection.getConnection()) {
-                    PreparedStatement pstmt = connection.prepareStatement("UPDATE deduction_rates_table SET sss_rate = ?, philhealth_rate = ?, pagibig_rate = ?  WHERE deduction_id = ?");
+                    PreparedStatement pstmt = connection.prepareStatement("UPDATE deduction_rates_table SET sss_rate = ?, philhealth_rate = ?, pagibig_rate = ?  WHERE deduction_rate_id = ?");
                     pstmt.setString(1, sss);
                     pstmt.setString(2, philhealth);
                     pstmt.setString(3, pagibig);

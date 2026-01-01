@@ -1,5 +1,6 @@
 package employee.management.system;
 
+import newpackage.DatabaseConnection;
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.MultiFormatWriter;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
@@ -8,8 +9,6 @@ import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Dimension;
-import java.awt.Font;
-import java.awt.Graphics2D;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.sql.Connection;
@@ -28,21 +27,21 @@ import javax.swing.ImageIcon;
 import javax.swing.JFileChooser;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.Image;
-import java.awt.print.Printable;
 import java.io.File;
 import java.io.FileWriter;
 import java.text.MessageFormat;
 import java.awt.print.PrinterException;
-import java.awt.print.PrinterJob;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.Date;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import javax.swing.JTextField;
 import javax.swing.table.TableRowSorter;
 import javax.swing.table.TableModel;
@@ -50,10 +49,11 @@ import javax.swing.RowSorter;
 import javax.swing.SortOrder;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.prefs.Preferences;
 import javax.swing.JEditorPane;
 import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
 
 public class DashboardFrame extends javax.swing.JFrame {
 
@@ -74,6 +74,8 @@ public class DashboardFrame extends javax.swing.JFrame {
     // Get today's date
     LocalDate today = LocalDate.now();
 
+    String payPeriod;
+
     // Get the first and last day of the current month
     YearMonth yearMonth = YearMonth.from(today);
     LocalDate startOfMonth = yearMonth.atDay(1);
@@ -83,16 +85,27 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     TimeInOutFrame1 timeInOut;
 
+    DecimalFormat df = new DecimalFormat("#,##0.00");
+
+    private Map<String, String[]> departmentPositions = new HashMap<>();
+
     public DashboardFrame() {
         initComponents();
+
+        df.setRoundingMode(RoundingMode.HALF_UP);
+
         Connect();
         fetchUser();
         fetchTheUser();
         fetch();
         fetchPayroll();
+        fetchPositionRateData();
         loadComboBox();
         loadEmployeeListComboBox();
         loadPayrollComboBox();
+        loadPositionRateComboBox();
+
+        payPeriod = today.format(DateTimeFormatter.ofPattern("yyyy MMM, " + startOfMonth.getDayOfMonth() + " - " + endOfMonth.getDayOfMonth()));
 
         card = (CardLayout) (jPanel3.getLayout());
 
@@ -101,6 +114,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         addButtonHoverEffects();
         // -------------------- DASHBOARD COUNTS --------------------
         jLabel8.setText(today.toString());
+        jLabel9.setText(payPeriod);
         updateDashboardCounts(); // Initial update of Active / Inactive / Total
 
         jTextField3 = (JTextField) jComboBox2.getEditor().getEditorComponent();
@@ -139,9 +153,16 @@ public class DashboardFrame extends javax.swing.JFrame {
                         v2.add(rs.getString("employee_name"));
                         v2.add(rs.getString("position"));
                         v2.add(rs.getString("net_pay"));
-                        v2.add(rs.getString("pay_period"));
+                        v2.add(df.format(rs.getDouble("gross_pay")));
                         dtm.addRow(v2);
                     }
+                    pstmt = connection.prepareStatement("SELECT SUM(gross_pay) AS total_gross_pay FROM payroll_table");
+                    rs = pstmt.executeQuery();
+                    if (rs.next()) {
+                        String[] obj = {"Total", null, null, df.format(rs.getDouble("total_gross_pay"))};
+                        dtm.addRow(obj);
+                    }
+
                 } catch (SQLException ex) {
                     Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
                     JOptionPane.showMessageDialog(null, "Searching Failed!\n" + ex.getLocalizedMessage());
@@ -149,8 +170,8 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
         });
 
-        jTextField1 = (JTextField) jComboBox.getEditor().getEditorComponent();
-        jTextField1.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+        jTextField4 = (JTextField) jComboBox.getEditor().getEditorComponent();
+        jTextField4.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
             @Override
             public void insertUpdate(javax.swing.event.DocumentEvent e) {
                 searchAction();
@@ -167,7 +188,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
 
             private void searchAction() {
-                String text = jTextField1.getText().trim();
+                String text = jTextField4.getText().trim();
 
                 try (Connection connection = DatabaseConnection.getConnection()) {
                     String sql = "SELECT * FROM employees_table WHERE (employee_id LIKE ? OR full_name LIKE ? OR position LIKE ? OR department LIKE ?) ORDER BY employee_id DESC";
@@ -193,6 +214,65 @@ public class DashboardFrame extends javax.swing.JFrame {
                     JOptionPane.showMessageDialog(null, "Searching Failed!\n" + ex.getLocalizedMessage());
                 }
             }
+        });
+
+        jTextField1 = (JTextField) jComboBox3.getEditor().getEditorComponent();
+        jTextField1.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                searchAction();
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                searchAction();
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                searchAction();
+            }
+
+            private void searchAction() {
+
+                String text = jTextField1.getText().trim();
+
+                DefaultTableModel model = (DefaultTableModel) positionRateTable.getModel();
+                model.setRowCount(0);
+
+                String sql
+                        = "SELECT dp.id, dp.department_name, dp.position_name, ps.salary_rate "
+                        + "FROM department_positions dp "
+                        + "JOIN position_salary_rate ps "
+                        + "ON dp.position_name = ps.position_name "
+                        + "WHERE dp.department_name LIKE ? "
+                        + "OR dp.position_name LIKE ? "
+                        + "OR CAST(ps.salary_rate AS CHAR) LIKE ? "
+                        + "ORDER BY dp.department_name, dp.position_name";
+
+                try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+                    ps.setString(1, "%" + text + "%");
+                    ps.setString(2, "%" + text + "%");
+                    ps.setString(3, "%" + text + "%");
+
+                    ResultSet rs = ps.executeQuery();
+
+                    while (rs.next()) {
+                        model.addRow(new Object[]{
+                            rs.getInt("id"),
+                            rs.getString("department_name"),
+                            rs.getString("position_name"),
+                            rs.getBigDecimal("salary_rate")
+                        });
+                    }
+
+                } catch (SQLException ex) {
+                    Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
+                    JOptionPane.showMessageDialog(null, "Search failed!\n" + ex.getMessage());
+                }
+            }
+
         });
 
         jTextField2 = (JTextField) jComboBox1.getEditor().getEditorComponent();
@@ -249,7 +329,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         });
 
     }
-    // ------------------- NEW METHOD -------------------
 
     public void updateDashboardCounts() {
         try (Connection connection = DatabaseConnection.getConnection()) {
@@ -266,7 +345,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             PreparedStatement activeStmt = connection.prepareStatement(
                     "SELECT COUNT(DISTINCT e.employee_id) FROM employees_table e "
                     + "JOIN attendance_table a ON e.employee_id = a.employee_id "
-                    + "WHERE a.date = CURDATE()"
+                    + "WHERE a.date = CURDATE() AND a.status = 'Present'"
             );
             ResultSet activeRs = activeStmt.executeQuery();
             if (activeRs.next()) {
@@ -359,7 +438,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             // -------------------- PAYROLL TABLE --------------------
             String createPayrollTable = "CREATE TABLE IF NOT EXISTS payroll_table ("
                     + "id INT AUTO_INCREMENT PRIMARY KEY, "
-                    + "employee_id INT UNIQUE NOT NULL, "
+                    + "employee_id INT NOT NULL, "
                     + "employee_name VARCHAR(100), "
                     + "position VARCHAR(100), "
                     + "monthly_salary DOUBLE, "
@@ -369,7 +448,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "standard_work_days INT, "
                     + "standard_hours INT, "
                     + "hourly_rate DOUBLE, "
-                    + "gross_pay DOUBLE, "
+                    + "gross_pay DOUBLE(100, 2), "
                     + "sss DOUBLE, "
                     + "philhealth DOUBLE, "
                     + "pagibig DOUBLE, "
@@ -381,11 +460,136 @@ public class DashboardFrame extends javax.swing.JFrame {
                     + "prepared_by VARCHAR(100))";
             stmt.execute(createPayrollTable);
 
+            String createDepartmentTable = "CREATE TABLE IF NOT EXISTS department_positions ("
+                    + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "department_name VARCHAR(100) NOT NULL, "
+                    + "position_name VARCHAR(100) NOT NULL, "
+                    + "UNIQUE (department_name, position_name)"
+                    + ")";
+            stmt.execute(createDepartmentTable);
+
+            String insertDepartment = "INSERT IGNORE INTO department_positions (department_name, position_name) VALUES "
+                    + "('Executive / Leadership','Chief Operating Officer (COO)'),"
+                    + "('Executive / Leadership','Chief Financial Officer (CFO)'),"
+                    + "('Executive / Leadership','Chief Technology Officer (CTO)'),"
+                    + "('Administration & Operations','Office Manager'),"
+                    + "('Administration & Operations','Operations Coordinator'),"
+                    + "('Administration & Operations','Administrative Assistant'),"
+                    + "('Administration & Operations','Project Manager'),"
+                    + "('Administration & Operations','Facilities Supervisor'),"
+                    + "('Finance & Accounting','Accountant'),"
+                    + "('Finance & Accounting','Financial Analyst'),"
+                    + "('Finance & Accounting','Payroll Specialist'),"
+                    + "('Finance & Accounting','Internal Auditor'),"
+                    + "('Finance & Accounting','Accounts Payable Clerk'),"
+                    + "('Human Resources','HR Manager'),"
+                    + "('Human Resources','Recruiter / Talent Acquisition Specialist'),"
+                    + "('Human Resources','Training & Development Coordinator'),"
+                    + "('Human Resources','Compensation & Benefits Analyst'),"
+                    + "('Human Resources','Employee Relations Specialist'),"
+                    + "('Marketing & Sales','Vice President of Marketing'),"
+                    + "('Marketing & Sales','Marketing Manager'),"
+                    + "('Marketing & Sales','Social Media Specialist'),"
+                    + "('Marketing & Sales','Sales Representative'),"
+                    + "('Marketing & Sales','Business Development Manager'),"
+                    + "('Marketing & Sales','Customer Success Manager'),"
+                    + "('Information Technology (IT)','Software Engineer'),"
+                    + "('Information Technology (IT)','Data Analyst'),"
+                    + "('Information Technology (IT)','IT Support Specialist'),"
+                    + "('Information Technology (IT)','Cybersecurity Analyst'),"
+                    + "('Information Technology (IT)','Systems Administrator'),"
+                    + "('Product Development & Design','Product Manager'),"
+                    + "('Product Development & Design','UX/UI Designer'),"
+                    + "('Product Development & Design','Graphic Designer'),"
+                    + "('Product Development & Design','Quality Assurance Tester'),"
+                    + "('Research & Development (R&D)','Research & Development Specialist'),"
+                    + "('Customer Service','Call Center Agent'),"
+                    + "('Customer Service','Technical Support Representative'),"
+                    + "('Customer Service','Client Relations Coordinator'),"
+                    + "('Customer Service','Customer Experience Specialist')";
+            stmt.execute(insertDepartment);
+
+            String createPositionSalaryRateTable = "CREATE TABLE IF NOT EXISTS position_salary_rate ("
+                    + "id INT AUTO_INCREMENT PRIMARY KEY, "
+                    + "position_name VARCHAR(100) NOT NULL UNIQUE, "
+                    + "salary_rate DECIMAL(10,2) NOT NULL"
+                    + ")";
+            stmt.execute(createPositionSalaryRateTable);
+
+            String insertPositionSalaryRate = "INSERT IGNORE INTO position_salary_rate (position_name, salary_rate) VALUES "
+                    + "('Chief Operating Officer (COO)', 120000),"
+                    + "('Chief Financial Officer (CFO)', 110000),"
+                    + "('Chief Technology Officer (CTO)', 115000),"
+                    + "('Vice President of Marketing', 90000),"
+                    + "('Office Manager', 35000),"
+                    + "('Operations Coordinator', 30000),"
+                    + "('Administrative Assistant', 28000),"
+                    + "('Project Manager', 60000),"
+                    + "('Facilities Supervisor', 32000),"
+                    + "('Accountant', 45000),"
+                    + "('Financial Analyst', 50000),"
+                    + "('Payroll Specialist', 40000),"
+                    + "('Internal Auditor', 48000),"
+                    + "('Accounts Payable Clerk', 30000),"
+                    + "('HR Manager', 50000),"
+                    + "('Recruiter / Talent Acquisition Specialist', 42000),"
+                    + "('Training & Development Coordinator', 38000),"
+                    + "('Compensation & Benefits Analyst', 46000),"
+                    + "('Employee Relations Specialist', 40000),"
+                    + "('Marketing Manager', 55000),"
+                    + "('Social Media Specialist', 35000),"
+                    + "('Sales Representative', 30000),"
+                    + "('Business Development Manager', 60000),"
+                    + "('Customer Success Manager', 48000),"
+                    + "('Software Engineer', 65000),"
+                    + "('Data Analyst', 60000),"
+                    + "('IT Support Specialist', 35000),"
+                    + "('Cybersecurity Analyst', 70000),"
+                    + "('Systems Administrator', 58000),"
+                    + "('Product Manager', 65000),"
+                    + "('UX/UI Designer', 50000),"
+                    + "('Graphic Designer', 40000),"
+                    + "('Quality Assurance Tester', 42000),"
+                    + "('Research & Development Specialist', 55000),"
+                    + "('Call Center Agent', 28000),"
+                    + "('Technical Support Representative', 32000),"
+                    + "('Client Relations Coordinator', 36000),"
+                    + "('Customer Experience Specialist', 38000)";
+            stmt.execute(insertPositionSalaryRate);
+
             connection.close();
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(null, "Database Connecting Failed!\n" + ex.getLocalizedMessage());
             System.exit(0);
+        }
+    }
+
+    public void fetchPositionRateData() {
+
+        DefaultTableModel model = (DefaultTableModel) positionRateTable.getModel();
+        model.setRowCount(0); // clear table
+
+        String sql
+                = "SELECT dp.id, dp.department_name, dp.position_name, ps.salary_rate "
+                + "FROM department_positions dp "
+                + "JOIN position_salary_rate ps "
+                + "ON dp.position_name = ps.position_name "
+                + "ORDER BY dp.department_name, dp.position_name";
+
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                model.addRow(new Object[]{
+                    rs.getInt("id"), // department_position id
+                    rs.getString("department_name"),
+                    rs.getString("position_name"),
+                    rs.getBigDecimal("salary_rate")
+                });
+            }
+
+        } catch (SQLException ex) {
+            ex.printStackTrace();
         }
     }
 
@@ -410,7 +614,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     public void fetchPayroll() {
         try (Connection connection = DatabaseConnection.getConnection()) {
             PreparedStatement pstmt = connection.prepareStatement(
-                    "SELECT employee_id, employee_name, position, net_pay, pay_period FROM payroll_table"
+                    "SELECT employee_id, employee_name, position, gross_pay FROM payroll_table"
             );
             ResultSet rs = pstmt.executeQuery();
 
@@ -422,16 +626,21 @@ public class DashboardFrame extends javax.swing.JFrame {
                 v.add(rs.getInt("employee_id"));
                 v.add(rs.getString("employee_name"));
                 v.add(rs.getString("position"));
-                v.add(rs.getDouble("net_pay"));
-                v.add(rs.getString("pay_period"));
+                v.add(df.format(rs.getDouble("gross_pay")));
                 dtm.addRow(v);
+            }
+            pstmt = connection.prepareStatement("SELECT SUM(gross_pay) AS total_gross_pay FROM payroll_table");
+            rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String[] obj = {"Total", null, null, df.format(rs.getDouble("total_gross_pay"))};
+                dtm.addRow(obj);
             }
 
             // Auto descending order based on "id"
             TableRowSorter<DefaultTableModel> sorter = new TableRowSorter<>(dtm);
             payrollTable.setRowSorter(sorter);
             List<RowSorter.SortKey> sortKeys = new ArrayList<>();
-            sortKeys.add(new RowSorter.SortKey(0, SortOrder.DESCENDING));
+            sortKeys.add(new RowSorter.SortKey(0, SortOrder.ASCENDING));
             sorter.setSortKeys(sortKeys);
             sorter.sort();
 
@@ -515,7 +724,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         if (dateBirth != null) {
             dateBirth.setDate(null);
         }
-        comboGender.setSelectedIndex(0);
+        comboGender.setSelectedIndex(-1);
         txtAddress.setText("");
         txtContact.setText("");
         txtSalary.setText("");
@@ -523,7 +732,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         comboPosition.setSelectedIndex(-1);
         comboDepartment.setSelectedIndex(-1);
         if (dateHired != null) {
-            dateHired.setDate(null);
+            dateHired.setDate(java.util.Date.from(LocalDate.now().atStartOfDay(ZoneId.systemDefault()).toInstant()));
         }
 
         if (lblPhotoPreview != null) {
@@ -538,10 +747,8 @@ public class DashboardFrame extends javax.swing.JFrame {
             imageHolder.setIcon(null);
             imageHolder.setText("PHOTO");
         }
-        if (qrHolder != null) {
-            qrHolder.setIcon(null);
-            qrHolder.setText("QR");
-        }
+
+        generateQr();
 
         imagePath = null;
     }
@@ -767,10 +974,6 @@ public class DashboardFrame extends javax.swing.JFrame {
     }
 
     public void GeneratePaySlip(int id) {
-
-        DecimalFormat df = new DecimalFormat("#,##0.00");
-        df.setRoundingMode(RoundingMode.HALF_UP);
-
         try (Connection connection = DatabaseConnection.getConnection()) {
 
             String sql = "SELECT * FROM payroll_table WHERE employee_id = ?";
@@ -780,71 +983,79 @@ public class DashboardFrame extends javax.swing.JFrame {
                 ResultSet rs = pstmt.executeQuery();
 
                 if (rs.next()) {
-                    payslip
-                            = "<html>"
-                            + "<body style='font-family: monospace; font-size: 12px;'>"
+                    payslip = "<html>"
+                            + "<body style='font-family: Arial, sans-serif; font-size: 9px; margin: 10px; padding: 10px;'>"
                             /* ===== TITLE ===== */
-                            + "<h1 style='text-align:center; font-weight:bold;'>EMSys</h1>"
-                            + "<div style='text-align:center; font-weight:bold;'>"
-                            + "Project 4, Daet, Camarines Norte, Philippines<br>"
-                            + "PAYSLIP</div>"
-                            + "<hr>"
-                            /* ===== EMPLOYEE INFO ===== */
-                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
-                            + "<tr><th colspan='2' style='text-align:left;'>EMPLOYEE INFORMATION</th></tr>"
-                            + "<tr><td><b>Employee ID</b></td><td>" + rs.getInt("employee_id") + "</td></tr>"
-                            + "<tr><td><b>Employee Name</b></td><td>" + rs.getString("employee_name") + "</td></tr>"
-                            + "<tr><td><b>Position</b></td><td>" + rs.getString("position") + "</td></tr>"
-                            + "<tr><td><b>Monthly Rate</b></td><td>" + df.format(rs.getDouble("monthly_salary")) + "</td></tr>"
-                            + "<tr><td><b>Pay Period</b></td><td>" + rs.getString("pay_period") + "</td></tr>"
-                            + "</table>"
-                            + "<br>"
-                            /* ===== WORK SUMMARY ===== */
-                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
-                            + "<tr><th colspan='2' style='text-align:left;'>WORK SUMMARY</th></tr>"
-                            + "<tr><td><b>Total Present</b></td><td>" + rs.getInt("total_present") + " days</td></tr>"
-                            + "<tr><td><b>Total Absent</b></td><td>" + rs.getInt("total_absent") + " days</td></tr>"
-                            + "<tr><td><b>Total Hours Worked</b></td><td>"
-                            + df.format(rs.getDouble("total_hours_worked")) + " hrs</td></tr>"
-                            + "<tr><td><b>Standard Work Days</b></td><td>" + rs.getInt("standard_work_days") + "</td></tr>"
-                            + "<tr><td><b>Standard Hours</b></td><td>" + rs.getInt("standard_hours") + "</td></tr>"
-                            + "<tr><td><b>Hourly Rate</b></td><td>" + df.format(rs.getDouble("hourly_rate")) + "</td></tr>"
-                            + "</table>"
-                            + "<br>"
-                            /* ===== EARNINGS ===== */
-                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
-                            + "<tr><th colspan='2' style='text-align:left;'>EARNINGS</th></tr>"
-                            + "<tr><td><b>Gross Pay</b></td><td>" + df.format(rs.getDouble("gross_pay")) + "</td></tr>"
-                            + "</table>"
-                            + "<br>"
-                            /* ===== DEDUCTIONS ===== */
-                            + "<table width='100%' border='1' cellspacing='0' cellpadding='6'>"
-                            + "<tr><th colspan='2' style='text-align:left;'>DEDUCTIONS</th></tr>"
-                            + "<tr><td><b>SSS</b></td><td>" + df.format(rs.getDouble("sss")) + "</td></tr>"
-                            + "<tr><td><b>PhilHealth</b></td><td>" + df.format(rs.getDouble("philhealth")) + "</td></tr>"
-                            + "<tr><td><b>Pag-IBIG</b></td><td>" + df.format(rs.getDouble("pagibig")) + "</td></tr>"
-                            + "<tr><td><b>Taxable Income</b></td><td>" + df.format(rs.getDouble("taxable_income")) + "</td></tr>"
-                            + "<tr><td><b>Tax</b></td><td>" + df.format(rs.getDouble("tax")) + "</td></tr>"
-                            + "<tr><td><b>Total Deduction</b></td><td>"
-                            + df.format(rs.getDouble("total_deduction")) + "</td></tr>"
-                            + "</table>"
-                            + "<br>"
-                            /* ===== NET PAY ===== */
-                            + "<table width='100%' border='1' cellspacing='0' cellpadding='8'>"
+                            + "<div style='text-align: center; margin-bottom: 10px;'>"
+                            + "<h2 style='margin:  0; font-size: 16px;'>EMSys</h2>"
+                            + "<p style='margin: 2px 0; font-size:  9px;'>Project 1, Daet, Camarines Norte</p>"
+                            + "<p style='margin: 2px 0; font-size: 11px; font-weight: bold;'>PAYSLIP</p>"
+                            + "</div>"
+                            + "<hr style='margin: 5px 0;'>"
+                            /* ===== EMPLOYEE INFORMATION ===== */
+                            + "<table width='100%' border='0' cellspacing='0' cellpadding='4' style='font-size: 9px; margin-bottom: 10px;'>"
                             + "<tr>"
-                            + "<th style='text-align:left;'>NET PAY</th>"
-                            + "<th style='text-align:right; font-size:14px;'>"
-                            + df.format(rs.getDouble("net_pay"))
-                            + "</th>"
+                            + "<td width='25%'><b>Employee ID:</b><br>" + rs.getInt("employee_id") + "</td>"
+                            + "<td width='30%'><b>Name:</b><br>" + rs.getString("employee_name") + "</td>"
+                            + "<td width='20%'><b>Position:</b><br>" + rs.getString("position") + "</td>"
+                            + "<td width='25%'><b>Pay Period:</b><br>" + rs.getString("pay_period") + "</td>"
+                            + "</tr>"
+                            + "<tr>"
+                            + "<td colspan='4' style='border-top: 1px solid #000;'><b>Monthly Rate:</b> " + df.format(rs.getDouble("monthly_salary")) + "</td>"
                             + "</tr>"
                             + "</table>"
-                            + "<br>"
-                            /* ===== FOOTER ===== */
-                            + "<table width='100%' cellspacing='0' cellpadding='4'>"
-                            + "<tr><td><b>Prepared By</b>: " + rs.getString("prepared_by") + "</td></tr>"
+                            /* ===== WORK SUMMARY ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='4' style='font-size: 9px; margin-bottom: 10px;'>"
+                            + "<tr style='background-color: #f5f5f5;'>"
+                            + "<th style='text-align: left;'>Present Days</th>"
+                            + "<th style='text-align: left;'>Absent Days</th>"
+                            + "<th style='text-align: left;'>Hours Worked</th>"
+                            + "<th style='text-align: left;'>Standard Days</th>"
+                            + "<th style='text-align: left;'>Standard Hours</th>"
+                            + "<th style='text-align: left;'>Hourly Rate</th>"
+                            + "</tr>"
+                            + "<tr>"
+                            + "<td>" + rs.getInt("total_present") + "</td>"
+                            + "<td>" + rs.getInt("total_absent") + "</td>"
+                            + "<td>" + df.format(rs.getDouble("total_hours_worked")) + "</td>"
+                            + "<td>" + rs.getInt("standard_work_days") + "</td>"
+                            + "<td>" + rs.getInt("standard_hours") + "</td>"
+                            + "<td>" + df.format(rs.getDouble("hourly_rate")) + "</td>"
+                            + "</tr>"
                             + "</table>"
+                            /* ===== EARNINGS & DEDUCTIONS ===== */
+                            + "<table width='100%' border='1' cellspacing='0' cellpadding='4' style='font-size: 9px; margin-bottom: 10px;'>"
+                            + "<tr style='background-color:  #f5f5f5;'>"
+                            + "<th width='33%' style='text-align: left;'>EARNINGS</th>"
+                            + "<th width='33%' style='text-align: left;'>DEDUCTIONS</th>"
+                            + "<th width='34%' style='text-align:  left;'>TAXES</th>"
+                            + "</tr>"
+                            + "<tr valign='top'>"
+                            + "<td><b>Gross Pay:</b> " + df.format(rs.getDouble("gross_pay")) + "</td>"
+                            + "<td>"
+                            + "<b>SSS:</b> " + df.format(rs.getDouble("sss")) + "<br>"
+                            + "<b>PhilHealth:</b> " + df.format(rs.getDouble("philhealth")) + "<br>"
+                            + "<b>Pag-IBIG:</b> " + df.format(rs.getDouble("pagibig")) + ""
+                            + "</td>"
+                            + "<td>"
+                            + "<b>Taxable Income:</b> " + df.format(rs.getDouble("taxable_income")) + "<br>"
+                            + "<b>Tax:</b> " + df.format(rs.getDouble("tax")) + "<br>"
+                            + "<b>Total Deduction:</b> " + df.format(rs.getDouble("total_deduction")) + ""
+                            + "</td>"
+                            + "</tr>"
+                            + "</table>"
+                            /* ===== NET PAY ===== */
+                            + "<table width='100%' border='2' cellspacing='0' cellpadding='6' style='font-size: 10px; margin-bottom: 10px; background-color: #f0f0f0;'>"
+                            + "<tr>"
+                            + "<td width='50%'><b>NET PAY</b></td>"
+                            + "<td width='50%' style='text-align: right; font-weight: bold; font-size: 12px;'>" + df.format(rs.getDouble("net_pay")) + "</td>"
+                            + "</tr>"
+                            + "</table>"
+                            /* ===== FOOTER ===== */
+                            + "<div style='text-align: right; font-size: 8px; margin-top: 10px;'>"
+                            + "<p><b>Prepared By: </b> " + rs.getString("prepared_by") + "</p>"
+                            + "</div>"
                             + "</body></html>";
-
                 } else {
                     payslip = "<html><body>No payslip found for this employee.</body></html>";
                 }
@@ -862,9 +1073,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         final int STANDARD_WORK_DAYS = 26;
         final double PAGIBIG_CAP = 10000;
 
-        DecimalFormat df = new DecimalFormat("#,##0.00");
-        df.setRoundingMode(RoundingMode.HALF_UP);
-
         try (Connection connection = DatabaseConnection.getConnection()) {
 
             connection.setAutoCommit(false);
@@ -872,7 +1080,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             // Delete existing payroll
             try (PreparedStatement deleteStmt
                     = connection.prepareStatement("DELETE FROM payroll_table WHERE pay_period = ?")) {
-                deleteStmt.setString(1, startOfMonth.toString() + " to " + endOfMonth.toString());
+                deleteStmt.setString(1, payPeriod);
                 deleteStmt.executeUpdate();
             }
 
@@ -911,8 +1119,8 @@ public class DashboardFrame extends javax.swing.JFrame {
                                     + "WHERE employee_id = ? AND date BETWEEN ? AND ? AND status = 'Present'")) {
 
                         presentStmt.setInt(1, employeeId);
-                        presentStmt.setDate(2, Date.valueOf(startOfMonth));
-                        presentStmt.setDate(3, Date.valueOf(endOfMonth));
+                        presentStmt.setDate(2, java.sql.Date.valueOf(startOfMonth));
+                        presentStmt.setDate(3, java.sql.Date.valueOf(endOfMonth));
 
                         try (ResultSet rs = presentStmt.executeQuery()) {
                             if (rs.next()) {
@@ -931,8 +1139,8 @@ public class DashboardFrame extends javax.swing.JFrame {
                                     + "WHERE employee_id = ? AND date BETWEEN ? AND ?")) {
 
                         hoursStmt.setInt(1, employeeId);
-                        hoursStmt.setDate(2, Date.valueOf(startOfMonth));
-                        hoursStmt.setDate(3, Date.valueOf(endOfMonth));
+                        hoursStmt.setDate(2, java.sql.Date.valueOf(startOfMonth));
+                        hoursStmt.setDate(3, java.sql.Date.valueOf(endOfMonth));
 
                         try (ResultSet rs = hoursStmt.executeQuery()) {
                             if (rs.next()) {
@@ -997,7 +1205,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                         insertStmt.setDouble(16, tax);
                         insertStmt.setDouble(17, totalDeductions);
                         insertStmt.setDouble(18, netPay);
-                        insertStmt.setString(19, startOfMonth.toString() + " to " + endOfMonth.toString());
+                        insertStmt.setString(19, payPeriod);
                         insertStmt.setString(20, "Admin");
 
                         insertStmt.executeUpdate();
@@ -1006,7 +1214,6 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
 
             connection.commit();
-            JOptionPane.showMessageDialog(this, "Payslip recorded successfully!");
             fetchPayroll();
 
         } catch (SQLException ex) {
@@ -1020,10 +1227,26 @@ public class DashboardFrame extends javax.swing.JFrame {
             PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT date FROM attendance_table ORDER BY date DESC");
             ResultSet rs = pstmt.executeQuery();
             jComboBox1.removeAllItems();
+            jComboBox1.addItem("");
             while (rs.next()) {
                 jComboBox1.addItem(rs.getString("date"));
             }
             jComboBox1.setSelectedItem(today);
+        } catch (SQLException ex) {
+            Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
+            JOptionPane.showMessageDialog(this, "LoadComboBox Failed!\n" + ex.getMessage());
+        }
+    }
+
+    public void loadPositionRateComboBox() {
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT department_name FROM department_positions ORDER BY department_name DESC");
+            ResultSet rs = pstmt.executeQuery();
+            jComboBox3.removeAllItems();
+            jComboBox3.addItem("");
+            while (rs.next()) {
+                jComboBox3.addItem(rs.getString("department_name"));
+            }
         } catch (SQLException ex) {
             Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
             JOptionPane.showMessageDialog(this, "LoadComboBox Failed!\n" + ex.getMessage());
@@ -1190,7 +1413,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                 card.show(jPanel3, "card4");
 
-                btnUpdate.setEnabled(false);
+                btnEdit.setEnabled(false);
                 btnRemove.setEnabled(false);
                 unselectButton.setEnabled(false);
                 employeesTable.clearSelection();
@@ -1219,6 +1442,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         jTextField1 = new javax.swing.JTextField();
         jTextField2 = new javax.swing.JTextField();
         jTextField3 = new javax.swing.JTextField();
+        jTextField4 = new javax.swing.JTextField();
         jPanel1 = new javax.swing.JPanel();
         jPanel2 = new javax.swing.JPanel();
         jLabel1 = new javax.swing.JLabel();
@@ -1230,6 +1454,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         jButton6 = new javax.swing.JButton();
         jButton7 = new javax.swing.JButton();
         jButton8 = new javax.swing.JButton();
+        jButton10 = new javax.swing.JButton();
         jPanel3 = new javax.swing.JPanel();
         dashboardmain = new javax.swing.JPanel();
         jLabel6 = new javax.swing.JLabel();
@@ -1264,7 +1489,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         txtEmail = new javax.swing.JTextField();
         positionLabel = new javax.swing.JLabel();
         comboPosition = new javax.swing.JComboBox<>();
-        department = new javax.swing.JLabel();
+        departmentAddLabel = new javax.swing.JLabel();
         comboDepartment = new javax.swing.JComboBox<>();
         btnADD = new javax.swing.JButton();
         btnCLEAR = new javax.swing.JButton();
@@ -1282,9 +1507,8 @@ public class DashboardFrame extends javax.swing.JFrame {
         viewEmployeeList = new javax.swing.JPanel();
         jPanel4 = new javax.swing.JPanel();
         jComboBox = new javax.swing.JComboBox<>();
-        btnUpdate = new javax.swing.JButton();
+        btnEdit = new javax.swing.JButton();
         btnRemove = new javax.swing.JButton();
-        generatePayslipButton = new javax.swing.JButton();
         unselectButton = new javax.swing.JButton();
         jScrollPane1 = new javax.swing.JScrollPane();
         employeesTable = new javax.swing.JTable();
@@ -1293,7 +1517,8 @@ public class DashboardFrame extends javax.swing.JFrame {
         jComboBox2 = new javax.swing.JComboBox<>();
         btnView1 = new javax.swing.JButton();
         unselectButton1 = new javax.swing.JButton();
-        deletePayrollButton = new javax.swing.JButton();
+        btnExport1 = new javax.swing.JButton();
+        jLabel9 = new javax.swing.JLabel();
         jScrollPane5 = new javax.swing.JScrollPane();
         payrollTable = new javax.swing.JTable();
         settings = new javax.swing.JPanel();
@@ -1336,23 +1561,24 @@ public class DashboardFrame extends javax.swing.JFrame {
         jButton9 = new javax.swing.JButton();
         database = new javax.swing.JPanel();
         resetDatabaseButton = new javax.swing.JButton();
-        generatePayslip = new javax.swing.JPanel();
-        bagPanel = new javax.swing.JPanel();
+        managePositionRates = new javax.swing.JPanel();
+        addUpdatePanel2 = new javax.swing.JPanel();
+        addUpdateLabel1 = new javax.swing.JLabel();
+        departmentLabel = new javax.swing.JLabel();
+        departmentField = new javax.swing.JTextField();
+        addUpdateUsernameLabel3 = new javax.swing.JLabel();
+        positionField = new javax.swing.JTextField();
+        addUpdatePasswordLabel1 = new javax.swing.JLabel();
+        addButton1 = new javax.swing.JButton();
+        rateField = new javax.swing.JTextField();
+        tablePanel1 = new javax.swing.JPanel();
         jScrollPane4 = new javax.swing.JScrollPane();
-        receiptArea = new javax.swing.JTextArea();
-        moreInfoPanel = new javax.swing.JPanel();
-        totalWorkDaysField = new javax.swing.JTextField();
-        totalWorkDaysLabel = new javax.swing.JLabel();
-        startDateLabel = new javax.swing.JLabel();
-        startDateField = new javax.swing.JTextField();
-        endDateLabel = new javax.swing.JLabel();
-        endDateField = new javax.swing.JTextField();
-        preparedByLabel = new javax.swing.JLabel();
-        preparedByField = new javax.swing.JTextField();
-        buttonsPanel = new javax.swing.JPanel();
-        backButton = new javax.swing.JButton();
-        printButton = new javax.swing.JButton();
-        recordButton = new javax.swing.JButton();
+        positionRateTable = new javax.swing.JTable();
+        jPanel9 = new javax.swing.JPanel();
+        removeButton1 = new javax.swing.JButton();
+        updateButton1 = new javax.swing.JButton();
+        clearSelectionButton1 = new javax.swing.JButton();
+        jComboBox3 = new javax.swing.JComboBox<>();
 
         jPopupMenu1.setBackground(new java.awt.Color(0, 153, 153));
         jPopupMenu1.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
@@ -1383,15 +1609,11 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jTextField3.setText("jTextField1");
 
+        jTextField4.setText("jTextField4");
+
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("Employee Management System");
         setMinimumSize(new java.awt.Dimension(1000, 600));
-        setPreferredSize(new java.awt.Dimension(1200, 700));
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            public void windowClosed(java.awt.event.WindowEvent evt) {
-                formWindowClosed(evt);
-            }
-        });
 
         jPanel1.setBackground(new java.awt.Color(0, 51, 51));
         jPanel1.setForeground(new java.awt.Color(0, 0, 0));
@@ -1551,28 +1773,47 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
         });
 
+        jButton10.setBackground(new java.awt.Color(26, 0, 51));
+        jButton10.setFont(new java.awt.Font("Segoe UI", 0, 16)); // NOI18N
+        jButton10.setForeground(new java.awt.Color(78, 141, 245));
+        jButton10.setText("POSITION RATES");
+        jButton10.setBorderPainted(false);
+        jButton10.setContentAreaFilled(false);
+        jButton10.setFocusPainted(false);
+        jButton10.setFocusable(false);
+        jButton10.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
+        jButton10.setHorizontalTextPosition(javax.swing.SwingConstants.LEFT);
+        jButton10.setSelected(true);
+        jButton10.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton10ActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
         jPanel2Layout.setHorizontalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel2Layout.createSequentialGroup()
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                        .addComponent(jLabel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addGroup(jPanel2Layout.createSequentialGroup()
                             .addContainerGap()
                             .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                                .addComponent(jButton10, javax.swing.GroupLayout.DEFAULT_SIZE, 194, Short.MAX_VALUE)
                                 .addComponent(jButton7, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(jButton5, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                 .addComponent(jButton2, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 194, Short.MAX_VALUE)
                                 .addComponent(jButton3, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                 .addComponent(jButton1, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                 .addComponent(jButton4, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(jButton6, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
-                        .addComponent(jLabel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                                .addComponent(jButton6, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(jButton5, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                            .addGap(0, 0, Short.MAX_VALUE)))
                     .addGroup(jPanel2Layout.createSequentialGroup()
                         .addContainerGap()
                         .addComponent(jButton8, javax.swing.GroupLayout.PREFERRED_SIZE, 197, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addGap(6, 6, 6))
         );
         jPanel2Layout.setVerticalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1589,7 +1830,9 @@ public class DashboardFrame extends javax.swing.JFrame {
                 .addComponent(jButton2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jButton5, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(jButton10, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 73, Short.MAX_VALUE)
                 .addComponent(jButton8, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jButton7, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -1746,7 +1989,8 @@ public class DashboardFrame extends javax.swing.JFrame {
         gender.setText("GENDER");
 
         comboGender.setBackground(new java.awt.Color(0, 153, 153));
-        comboGender.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "NONE", "Male", "Female" }));
+        comboGender.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Male", "Female", "Other" }));
+        comboGender.setSelectedIndex(-1);
         comboGender.setPreferredSize(new java.awt.Dimension(250, 30));
         comboGender.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -1788,6 +2032,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnUploadPhoto.setBorder(javax.swing.BorderFactory.createBevelBorder(javax.swing.border.BevelBorder.RAISED));
         btnUploadPhoto.setBorderPainted(false);
         btnUploadPhoto.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnUploadPhoto.setFocusable(false);
         btnUploadPhoto.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnUploadPhotoActionPerformed(evt);
@@ -1796,7 +2041,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         salaryLabel.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
         salaryLabel.setForeground(new java.awt.Color(51, 51, 51));
-        salaryLabel.setText("SALARY");
+        salaryLabel.setText("SALARY (MONTHLY)");
 
         txtSalary.setBackground(new java.awt.Color(255, 255, 255));
         txtSalary.setPreferredSize(new java.awt.Dimension(250, 30));
@@ -1823,20 +2068,26 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
         });
 
-        department.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
-        department.setForeground(new java.awt.Color(51, 51, 51));
-        department.setText("DEPARTMENT");
+        departmentAddLabel.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
+        departmentAddLabel.setForeground(new java.awt.Color(51, 51, 51));
+        departmentAddLabel.setText("DEPARTMENT");
 
         comboDepartment.setBackground(new java.awt.Color(0, 153, 153));
-        comboDepartment.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Executive / Leadership", "Administration & Operations", "Finance & Accounting", "Human Resources", "Marketing & Sales", "Information Technology (IT)", "Product Development & Design", "Customer Service", "Research & Development (R&D)", "Legal & Compliance", "Procurement & Supply Chain", "Manufacturing / Production", "Quality Assurance", "Public Relations & Communications" }));
+        comboDepartment.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Executive / Leadership", "Administration & Operations", "Finance & Accounting", "Human Resources", "Marketing & Sales", "Information Technology (IT)", "Product Development & Design", "Research & Development (R&D)", "Customer Service" }));
         comboDepartment.setSelectedIndex(-1);
         comboDepartment.setPreferredSize(new java.awt.Dimension(250, 30));
+        comboDepartment.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                comboDepartmentActionPerformed(evt);
+            }
+        });
 
         btnADD.setBackground(new java.awt.Color(0, 204, 102));
         btnADD.setForeground(new java.awt.Color(204, 255, 255));
         btnADD.setText("ADD");
         btnADD.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnADD.setFocusable(false);
+        btnADD.setMinimumSize(new java.awt.Dimension(65, 30));
         btnADD.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnADDActionPerformed(evt);
@@ -1848,6 +2099,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnCLEAR.setText("CLEAR");
         btnCLEAR.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         btnCLEAR.setFocusable(false);
+        btnCLEAR.setMinimumSize(new java.awt.Dimension(70, 30));
         btnCLEAR.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnCLEARActionPerformed(evt);
@@ -1866,7 +2118,7 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
         });
 
-        jLabel2.setFont(new java.awt.Font("Segoe UI", 1, 36)); // NOI18N
+        jLabel2.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
         jLabel2.setForeground(new java.awt.Color(51, 51, 51));
         jLabel2.setText("PERSONAL INFORMATION");
 
@@ -1897,124 +2149,111 @@ public class DashboardFrame extends javax.swing.JFrame {
         addEmployeePanelLayout.setHorizontalGroup(
             addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                .addContainerGap(133, Short.MAX_VALUE)
+                .addContainerGap(166, Short.MAX_VALUE)
                 .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                    .addComponent(birthDate, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(gender, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(address, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(contactNo, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(hiredate, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                    .addComponent(txtAddress, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(txtContact, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(comboGender, 0, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                    .addComponent(dateBirth, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(dateHired, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGap(20, 20, 20))
-                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, addEmployeePanelLayout.createSequentialGroup()
-                                .addComponent(name, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addComponent(txtName, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(18, 18, 18)))
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(email, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(salaryLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                                .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                                    .addComponent(btnADD)
-                                    .addGap(39, 39, 39)
-                                    .addComponent(btnSAVE1)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                    .addComponent(btnCLEAR)
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                    .addComponent(btnCANCEL))
-                                .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                                    .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                        .addComponent(positionLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(department, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                    .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                    .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                                        .addComponent(comboPosition, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(txtSalary, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(txtEmail, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                        .addComponent(comboDepartment, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                            .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                                .addGap(45, 45, 45)
-                                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(imageHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(btnUploadPhoto, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                .addGap(30, 30, 30)
-                                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(qrHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)))))
+                    .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                        .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(address, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(contactNo, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addComponent(birthDate, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(txtContact, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(dateBirth, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(comboGender, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtAddress, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(gender, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtEmail, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(email, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtName, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(name, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel2))
-                .addContainerGap(133, Short.MAX_VALUE))
+                .addGap(60, 60, 60)
+                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(hiredate, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(dateHired, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(txtSalary, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(comboPosition, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(comboDepartment, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(positionLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(salaryLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(departmentAddLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 300, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(addEmployeePanelLayout.createSequentialGroup()
+                        .addComponent(btnADD, javax.swing.GroupLayout.PREFERRED_SIZE, 65, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(0, 0, 0)
+                        .addComponent(btnSAVE1)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(btnCLEAR, javax.swing.GroupLayout.PREFERRED_SIZE, 75, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(0, 0, 0)
+                        .addComponent(btnCANCEL))
+                    .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                        .addGroup(addEmployeePanelLayout.createSequentialGroup()
+                            .addComponent(imageHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGap(60, 60, 60)
+                            .addComponent(qrHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGroup(addEmployeePanelLayout.createSequentialGroup()
+                            .addComponent(btnUploadPhoto, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGap(60, 60, 60)
+                            .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                .addContainerGap(171, Short.MAX_VALUE))
         );
         addEmployeePanelLayout.setVerticalGroup(
             addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                .addContainerGap()
-                .addComponent(jLabel2)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 93, Short.MAX_VALUE)
+                .addContainerGap(54, Short.MAX_VALUE)
+                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                        .addComponent(imageHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(qrHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(addEmployeePanelLayout.createSequentialGroup()
+                        .addComponent(jLabel2)
+                        .addGap(58, 58, 58)
+                        .addComponent(name, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addGap(0, 0, 0)
                 .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(imageHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(qrHolder, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(btnUploadPhoto, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(txtName, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(name, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(30, 30, 30)
+                    .addComponent(btnUploadPhoto, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel7, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(18, 18, 18)
+                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(birthDate, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(departmentAddLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(0, 0, 0)
                 .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(dateBirth, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(comboDepartment, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(18, 18, 18)
+                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(addEmployeePanelLayout.createSequentialGroup()
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(salaryLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(txtSalary, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
+                            .addComponent(gender, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(positionLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(0, 0, 0)
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(email, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(txtEmail, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(positionLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(comboGender, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(comboPosition, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
+                        .addGap(18, 18, 18)
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(department, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(comboDepartment, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
+                            .addComponent(address, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(salaryLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(0, 0, 0)
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(btnCANCEL)
-                            .addComponent(btnCLEAR)
-                            .addComponent(btnADD)
-                            .addComponent(btnSAVE1)))
-                    .addGroup(addEmployeePanelLayout.createSequentialGroup()
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(dateBirth, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(birthDate, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
+                            .addComponent(txtAddress, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(txtSalary, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(18, 18, 18)
                         .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(gender, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(comboGender, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(address, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(txtAddress, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(contactNo, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(txtContact, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(30, 30, 30)
-                        .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addComponent(dateHired, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(hiredate, javax.swing.GroupLayout.PREFERRED_SIZE, 30, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addContainerGap(93, Short.MAX_VALUE))
+                            .addComponent(contactNo, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(hiredate, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addComponent(txtContact, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(dateHired, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(18, 18, 18)
+                .addComponent(email, javax.swing.GroupLayout.PREFERRED_SIZE, 20, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(0, 0, 0)
+                .addGroup(addEmployeePanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtEmail, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(btnADD, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(btnCANCEL)
+                    .addComponent(btnSAVE1)
+                    .addComponent(btnCLEAR, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(55, Short.MAX_VALUE))
         );
 
         jPanel3.add(addEmployeePanel, "card2");
@@ -2112,16 +2351,16 @@ public class DashboardFrame extends javax.swing.JFrame {
         jComboBox.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Search" }));
         jComboBox.setPreferredSize(new java.awt.Dimension(300, 30));
 
-        btnUpdate.setBackground(new java.awt.Color(0, 204, 102));
-        btnUpdate.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
-        btnUpdate.setForeground(new java.awt.Color(255, 255, 255));
-        btnUpdate.setText("UPDATE");
-        btnUpdate.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        btnUpdate.setEnabled(false);
-        btnUpdate.setFocusable(false);
-        btnUpdate.addActionListener(new java.awt.event.ActionListener() {
+        btnEdit.setBackground(new java.awt.Color(0, 204, 102));
+        btnEdit.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
+        btnEdit.setForeground(new java.awt.Color(255, 255, 255));
+        btnEdit.setText("EDIT");
+        btnEdit.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnEdit.setEnabled(false);
+        btnEdit.setFocusable(false);
+        btnEdit.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-                btnUpdateActionPerformed(evt);
+                btnEditActionPerformed(evt);
             }
         });
 
@@ -2135,18 +2374,6 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnRemove.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 btnRemoveActionPerformed(evt);
-            }
-        });
-
-        generatePayslipButton.setBackground(new java.awt.Color(255, 255, 255));
-        generatePayslipButton.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
-        generatePayslipButton.setForeground(new java.awt.Color(51, 51, 51));
-        generatePayslipButton.setText("GENERATE PAYSLIP");
-        generatePayslipButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        generatePayslipButton.setFocusable(false);
-        generatePayslipButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                generatePayslipButtonActionPerformed(evt);
             }
         });
 
@@ -2169,15 +2396,13 @@ public class DashboardFrame extends javax.swing.JFrame {
             jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(jPanel4Layout.createSequentialGroup()
                 .addComponent(jComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 411, Short.MAX_VALUE)
                 .addComponent(unselectButton)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(btnUpdate)
+                .addComponent(btnEdit)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnRemove, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 252, Short.MAX_VALUE)
-                .addComponent(generatePayslipButton)
-                .addGap(20, 20, 20))
+                .addGap(25, 25, 25))
         );
         jPanel4Layout.setVerticalGroup(
             jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -2186,8 +2411,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                 .addGroup(jPanel4Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jComboBox, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnRemove)
-                    .addComponent(btnUpdate)
-                    .addComponent(generatePayslipButton)
+                    .addComponent(btnEdit)
                     .addComponent(unselectButton))
                 .addGap(15, 15, 15))
         );
@@ -2272,17 +2496,20 @@ public class DashboardFrame extends javax.swing.JFrame {
             }
         });
 
-        deletePayrollButton.setBackground(new java.awt.Color(231, 76, 60));
-        deletePayrollButton.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
-        deletePayrollButton.setForeground(new java.awt.Color(255, 255, 255));
-        deletePayrollButton.setText("DELETE");
-        deletePayrollButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        deletePayrollButton.setFocusable(false);
-        deletePayrollButton.addActionListener(new java.awt.event.ActionListener() {
+        btnExport1.setBackground(new java.awt.Color(0, 204, 102));
+        btnExport1.setFont(new java.awt.Font("Segoe UI", 1, 12)); // NOI18N
+        btnExport1.setForeground(new java.awt.Color(255, 255, 255));
+        btnExport1.setText("SAVE");
+        btnExport1.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnExport1.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-                deletePayrollButtonActionPerformed(evt);
+                btnExport1ActionPerformed(evt);
             }
         });
+
+        jLabel9.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        jLabel9.setForeground(new java.awt.Color(255, 255, 255));
+        jLabel9.setText("Date");
 
         javax.swing.GroupLayout jPanel6Layout = new javax.swing.GroupLayout(jPanel6);
         jPanel6.setLayout(jPanel6Layout);
@@ -2291,12 +2518,14 @@ public class DashboardFrame extends javax.swing.JFrame {
             .addGroup(jPanel6Layout.createSequentialGroup()
                 .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addComponent(deletePayrollButton)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 372, Short.MAX_VALUE)
+                .addComponent(jLabel9)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 333, Short.MAX_VALUE)
                 .addComponent(unselectButton1)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(btnView1, javax.swing.GroupLayout.PREFERRED_SIZE, 85, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(52, 52, 52))
+                .addGap(18, 18, 18)
+                .addComponent(btnExport1, javax.swing.GroupLayout.PREFERRED_SIZE, 84, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(25, 25, 25))
         );
         jPanel6Layout.setVerticalGroup(
             jPanel6Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -2306,7 +2535,8 @@ public class DashboardFrame extends javax.swing.JFrame {
                     .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(btnView1)
                     .addComponent(unselectButton1)
-                    .addComponent(deletePayrollButton))
+                    .addComponent(btnExport1)
+                    .addComponent(jLabel9))
                 .addGap(15, 15, 15))
         );
 
@@ -2317,17 +2547,17 @@ public class DashboardFrame extends javax.swing.JFrame {
         payrollTable.setForeground(new java.awt.Color(0, 0, 0));
         payrollTable.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null},
-                {null, null, null, null, null}
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
             },
             new String [] {
-                "Employee ID", "Name", "Position", "Net Pay", "Pay Period"
+                "Employee ID", "Name", "Position", "Gross Pay"
             }
         ) {
             boolean[] canEdit = new boolean [] {
-                false, false, false, true, true
+                false, false, false, false
             };
 
             public boolean isCellEditable(int rowIndex, int columnIndex) {
@@ -2628,7 +2858,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         jTabbedPane1.addTab("Manage Users", manageUsersPanel);
 
         manageDeductions.setBackground(new java.awt.Color(26, 0, 51));
-        manageDeductions.setLayout(new java.awt.GridLayout());
+        manageDeductions.setLayout(new java.awt.GridLayout(1, 0));
 
         addUpdatePanel1.setOpaque(false);
         addUpdatePanel1.setLayout(new java.awt.GridBagLayout());
@@ -2734,162 +2964,183 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jPanel3.add(settings, "card6");
 
-        generatePayslip.setBackground(new java.awt.Color(221, 221, 221));
-        generatePayslip.setLayout(new java.awt.GridBagLayout());
+        managePositionRates.setBackground(new java.awt.Color(221, 221, 221));
+        managePositionRates.setLayout(new java.awt.GridLayout(1, 0));
 
-        bagPanel.setBackground(new java.awt.Color(26, 0, 51));
-        bagPanel.setMinimumSize(new java.awt.Dimension(800, 600));
-        bagPanel.setPreferredSize(new java.awt.Dimension(800, 600));
-        bagPanel.setLayout(new java.awt.BorderLayout());
+        addUpdatePanel2.setOpaque(false);
+        addUpdatePanel2.setLayout(new java.awt.GridBagLayout());
+
+        addUpdateLabel1.setFont(new java.awt.Font("Segoe UI", 1, 24)); // NOI18N
+        addUpdateLabel1.setForeground(new java.awt.Color(51, 51, 51));
+        addUpdateLabel1.setText("Add/Update RATES");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 0;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel2.add(addUpdateLabel1, gridBagConstraints);
+
+        departmentLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        departmentLabel.setForeground(new java.awt.Color(51, 51, 51));
+        departmentLabel.setText("Department:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 5);
+        addUpdatePanel2.add(departmentLabel, gridBagConstraints);
+
+        departmentField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        departmentField.setPreferredSize(new java.awt.Dimension(200, 30));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 1;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel2.add(departmentField, gridBagConstraints);
+
+        addUpdateUsernameLabel3.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        addUpdateUsernameLabel3.setForeground(new java.awt.Color(51, 51, 51));
+        addUpdateUsernameLabel3.setText("Position:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 5);
+        addUpdatePanel2.add(addUpdateUsernameLabel3, gridBagConstraints);
+
+        positionField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        positionField.setPreferredSize(new java.awt.Dimension(200, 30));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 2;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel2.add(positionField, gridBagConstraints);
+
+        addUpdatePasswordLabel1.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
+        addUpdatePasswordLabel1.setForeground(new java.awt.Color(51, 51, 51));
+        addUpdatePasswordLabel1.setText("Rate:");
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 5, 5);
+        addUpdatePanel2.add(addUpdatePasswordLabel1, gridBagConstraints);
+
+        addButton1.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
+        addButton1.setText("ADD");
+        addButton1.setFocusable(false);
+        addButton1.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                addButton1ActionPerformed(evt);
+            }
+        });
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 0;
+        gridBagConstraints.gridy = 5;
+        gridBagConstraints.gridwidth = 2;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel2.add(addButton1, gridBagConstraints);
+
+        rateField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        rateField.setPreferredSize(new java.awt.Dimension(200, 30));
+        gridBagConstraints = new java.awt.GridBagConstraints();
+        gridBagConstraints.gridx = 1;
+        gridBagConstraints.gridy = 3;
+        gridBagConstraints.insets = new java.awt.Insets(10, 0, 10, 0);
+        addUpdatePanel2.add(rateField, gridBagConstraints);
+
+        managePositionRates.add(addUpdatePanel2);
+
+        tablePanel1.setOpaque(false);
+        tablePanel1.setLayout(new java.awt.BorderLayout());
 
         jScrollPane4.setBorder(null);
-        jScrollPane4.setMinimumSize(new java.awt.Dimension(350, 300));
-        jScrollPane4.setPreferredSize(new java.awt.Dimension(350, 300));
 
-        receiptArea.setEditable(false);
-        receiptArea.setBackground(new java.awt.Color(255, 255, 255));
-        receiptArea.setColumns(40);
-        receiptArea.setFont(new java.awt.Font("Monospaced", 0, 14)); // NOI18N
-        receiptArea.setForeground(new java.awt.Color(0, 0, 0));
-        receiptArea.setRows(10);
-        receiptArea.setMinimumSize(new java.awt.Dimension(332, 204));
-        jScrollPane4.setViewportView(receiptArea);
+        positionRateTable.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        positionRateTable.setModel(new javax.swing.table.DefaultTableModel(
+            new Object [][] {
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null},
+                {null, null, null, null}
+            },
+            new String [] {
+                "Id", "Department", "Position", "Rate"
+            }
+        ) {
+            boolean[] canEdit = new boolean [] {
+                false, false, false, false
+            };
 
-        bagPanel.add(jScrollPane4, java.awt.BorderLayout.WEST);
-
-        moreInfoPanel.setOpaque(false);
-        moreInfoPanel.setLayout(new java.awt.GridBagLayout());
-
-        totalWorkDaysField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        totalWorkDaysField.setMinimumSize(new java.awt.Dimension(250, 35));
-        totalWorkDaysField.setPreferredSize(new java.awt.Dimension(250, 35));
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        moreInfoPanel.add(totalWorkDaysField, gridBagConstraints);
-
-        totalWorkDaysLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
-        totalWorkDaysLabel.setForeground(new java.awt.Color(255, 255, 255));
-        totalWorkDaysLabel.setText("Total Work Days:");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 0;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 10);
-        moreInfoPanel.add(totalWorkDaysLabel, gridBagConstraints);
-
-        startDateLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
-        startDateLabel.setForeground(new java.awt.Color(255, 255, 255));
-        startDateLabel.setText("Start Date:");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
-        gridBagConstraints.insets = new java.awt.Insets(30, 0, 0, 10);
-        moreInfoPanel.add(startDateLabel, gridBagConstraints);
-
-        startDateField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        startDateField.setMinimumSize(new java.awt.Dimension(250, 35));
-        startDateField.setPreferredSize(new java.awt.Dimension(250, 35));
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 1;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(30, 0, 0, 0);
-        moreInfoPanel.add(startDateField, gridBagConstraints);
-
-        endDateLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
-        endDateLabel.setForeground(new java.awt.Color(255, 255, 255));
-        endDateLabel.setText("End Date:");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 30, 10);
-        moreInfoPanel.add(endDateLabel, gridBagConstraints);
-
-        endDateField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        endDateField.setMinimumSize(new java.awt.Dimension(250, 35));
-        endDateField.setPreferredSize(new java.awt.Dimension(250, 35));
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 2;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 30, 0);
-        moreInfoPanel.add(endDateField, gridBagConstraints);
-
-        preparedByLabel.setFont(new java.awt.Font("Segoe UI", 1, 18)); // NOI18N
-        preparedByLabel.setForeground(new java.awt.Color(255, 255, 255));
-        preparedByLabel.setText("Prepared By:");
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 0;
-        gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.EAST;
-        gridBagConstraints.insets = new java.awt.Insets(0, 0, 0, 10);
-        moreInfoPanel.add(preparedByLabel, gridBagConstraints);
-
-        preparedByField.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
-        preparedByField.setMinimumSize(new java.awt.Dimension(250, 35));
-        preparedByField.setPreferredSize(new java.awt.Dimension(250, 35));
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.gridx = 1;
-        gridBagConstraints.gridy = 3;
-        gridBagConstraints.anchor = java.awt.GridBagConstraints.WEST;
-        moreInfoPanel.add(preparedByField, gridBagConstraints);
-
-        bagPanel.add(moreInfoPanel, java.awt.BorderLayout.CENTER);
-
-        buttonsPanel.setOpaque(false);
-        buttonsPanel.setPreferredSize(new java.awt.Dimension(200, 60));
-        buttonsPanel.setLayout(new java.awt.GridBagLayout());
-
-        backButton.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
-        backButton.setText("BACK");
-        backButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        backButton.setDefaultCapable(false);
-        backButton.setFocusable(false);
-        backButton.setPreferredSize(new java.awt.Dimension(100, 30));
-        backButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                backButtonActionPerformed(evt);
+            public boolean isCellEditable(int rowIndex, int columnIndex) {
+                return canEdit [columnIndex];
             }
         });
-        buttonsPanel.add(backButton, new java.awt.GridBagConstraints());
-
-        printButton.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
-        printButton.setText("PRINT");
-        printButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        printButton.setDefaultCapable(false);
-        printButton.setFocusable(false);
-        printButton.setPreferredSize(new java.awt.Dimension(100, 30));
-        printButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                printButtonActionPerformed(evt);
+        positionRateTable.setFocusable(false);
+        positionRateTable.setRowHeight(25);
+        positionRateTable.setRowMargin(3);
+        positionRateTable.setShowGrid(true);
+        positionRateTable.setSurrendersFocusOnKeystroke(true);
+        positionRateTable.getTableHeader().setReorderingAllowed(false);
+        positionRateTable.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                positionRateTableMouseClicked(evt);
             }
         });
-        gridBagConstraints = new java.awt.GridBagConstraints();
-        gridBagConstraints.insets = new java.awt.Insets(0, 10, 0, 10);
-        buttonsPanel.add(printButton, gridBagConstraints);
+        jScrollPane4.setViewportView(positionRateTable);
 
-        recordButton.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
-        recordButton.setText("RECORD");
-        recordButton.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
-        recordButton.setDefaultCapable(false);
-        recordButton.setFocusable(false);
-        recordButton.setPreferredSize(new java.awt.Dimension(100, 30));
-        recordButton.addActionListener(new java.awt.event.ActionListener() {
+        tablePanel1.add(jScrollPane4, java.awt.BorderLayout.CENTER);
+
+        jPanel9.setOpaque(false);
+        jPanel9.setPreferredSize(new java.awt.Dimension(400, 50));
+        jPanel9.setLayout(new java.awt.GridBagLayout());
+
+        removeButton1.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
+        removeButton1.setText("REMOVE");
+        removeButton1.setEnabled(false);
+        removeButton1.setFocusable(false);
+        removeButton1.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
-                recordButtonActionPerformed(evt);
+                removeButton1ActionPerformed(evt);
             }
         });
-        buttonsPanel.add(recordButton, new java.awt.GridBagConstraints());
+        jPanel9.add(removeButton1, new java.awt.GridBagConstraints());
 
-        bagPanel.add(buttonsPanel, java.awt.BorderLayout.PAGE_END);
+        updateButton1.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
+        updateButton1.setText("UPDATE");
+        updateButton1.setEnabled(false);
+        updateButton1.setFocusable(false);
+        updateButton1.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                updateButton1ActionPerformed(evt);
+            }
+        });
+        jPanel9.add(updateButton1, new java.awt.GridBagConstraints());
 
-        generatePayslip.add(bagPanel, new java.awt.GridBagConstraints());
+        clearSelectionButton1.setFont(new java.awt.Font("Segoe UI", 1, 14)); // NOI18N
+        clearSelectionButton1.setText("CLEAR SELECTION");
+        clearSelectionButton1.setEnabled(false);
+        clearSelectionButton1.setFocusable(false);
+        clearSelectionButton1.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                clearSelectionButton1ActionPerformed(evt);
+            }
+        });
+        jPanel9.add(clearSelectionButton1, new java.awt.GridBagConstraints());
 
-        jPanel3.add(generatePayslip, "card7");
+        tablePanel1.add(jPanel9, java.awt.BorderLayout.SOUTH);
+
+        jComboBox3.setBackground(new java.awt.Color(255, 255, 255));
+        jComboBox3.setEditable(true);
+        jComboBox3.setFont(new java.awt.Font("Segoe UI", 0, 14)); // NOI18N
+        jComboBox3.setForeground(new java.awt.Color(0, 0, 0));
+        jComboBox3.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Search" }));
+        jComboBox3.setPreferredSize(new java.awt.Dimension(300, 30));
+        tablePanel1.add(jComboBox3, java.awt.BorderLayout.NORTH);
+
+        managePositionRates.add(tablePanel1);
+
+        jPanel3.add(managePositionRates, "card8");
 
         jPanel1.add(jPanel3, java.awt.BorderLayout.CENTER);
 
@@ -2910,9 +3161,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     private void jButton2ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton2ActionPerformed
         // TODO add your handling code here:
-        receiptArea.setText("");
-
-        btnUpdate.setEnabled(false);
+        btnEdit.setEnabled(false);
         btnRemove.setEnabled(false);
         unselectButton.setEnabled(false);
 
@@ -2949,6 +3198,7 @@ public class DashboardFrame extends javax.swing.JFrame {
                             .getScaledInstance(imageHolder.getWidth(), imageHolder.getHeight(), Image.SCALE_SMOOTH)
             );
             imageHolder.setIcon(imageIcon);
+            imageHolder.setText("");
         }
     }//GEN-LAST:event_btnUploadPhotoActionPerformed
 
@@ -3041,7 +3291,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         ) == JOptionPane.YES_OPTION) {
             clearFields();
 
-            btnUpdate.setEnabled(false);
+            btnEdit.setEnabled(false);
             btnRemove.setEnabled(false);
             unselectButton.setEnabled(false);
             employeesTable.clearSelection();
@@ -3136,6 +3386,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         btnView1.setEnabled(false);
         unselectButton1.setEnabled(false);
         payrollTable.clearSelection();
+        recordPayslip();
         fetchPayroll();
         loadPayrollComboBox();
         this.revalidate();
@@ -3175,7 +3426,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
                     fetch();
 
-                    btnUpdate.setEnabled(false);
+                    btnEdit.setEnabled(false);
                     btnRemove.setEnabled(false);
                     unselectButton.setEnabled(false);
 
@@ -3189,7 +3440,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_btnRemoveActionPerformed
 
-    private void btnUpdateActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUpdateActionPerformed
+    private void btnEditActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnEditActionPerformed
         // TODO add your handling code here:
         int row = employeesTable.getSelectedRow();
         if (row == -1) {
@@ -3209,7 +3460,7 @@ public class DashboardFrame extends javax.swing.JFrame {
 
         jPanel3.revalidate();
         jPanel3.repaint();
-    }//GEN-LAST:event_btnUpdateActionPerformed
+    }//GEN-LAST:event_btnEditActionPerformed
 
     private void comboGenderActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_comboGenderActionPerformed
         // TODO add your handling code here:
@@ -3217,6 +3468,24 @@ public class DashboardFrame extends javax.swing.JFrame {
 
     private void comboPositionActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_comboPositionActionPerformed
         // TODO add your handling code here:
+        if (comboPosition.getSelectedItem() != null) {
+            String position = comboPosition.getSelectedItem().toString();
+
+            String sql = "SELECT salary_rate FROM position_salary_rate WHERE position_name = ?";
+
+            try (Connection connection = DatabaseConnection.getConnection(); PreparedStatement pstmt = connection.prepareStatement(sql)) {
+
+                pstmt.setString(1, position);
+                ResultSet rs = pstmt.executeQuery();
+
+                if (rs.next()) {
+                    txtSalary.setText(rs.getBigDecimal("salary_rate").toString());
+                }
+
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
     }//GEN-LAST:event_comboPositionActionPerformed
 
     private void btnExportActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnExportActionPerformed
@@ -3287,7 +3556,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         if (evt.getClickCount() == 2) {
             jPopupMenu1.show(evt.getComponent(), evt.getX(), evt.getY());
         }
-        btnUpdate.setEnabled(true);
+        btnEdit.setEnabled(true);
         btnRemove.setEnabled(true);
         unselectButton.setEnabled(true);
     }//GEN-LAST:event_employeesTableMouseClicked
@@ -3395,15 +3664,9 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_resetDatabaseButtonActionPerformed
 
-    private void generatePayslipButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_generatePayslipButtonActionPerformed
-        // TODO add your handling code here:
-        recordPayslip();
-        card.show(jPanel3, "card5");
-    }//GEN-LAST:event_generatePayslipButtonActionPerformed
-
     private void unselectButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_unselectButtonActionPerformed
         // TODO add your handling code here:
-        btnUpdate.setEnabled(false);
+        btnEdit.setEnabled(false);
         btnRemove.setEnabled(false);
         unselectButton.setEnabled(false);
         employeesTable.clearSelection();
@@ -3430,7 +3693,7 @@ public class DashboardFrame extends javax.swing.JFrame {
         editorPane.setEditable(false);
 
         JScrollPane scrollPane = new JScrollPane(editorPane);
-        scrollPane.setPreferredSize(new Dimension(400, 500));
+        scrollPane.setPreferredSize(new Dimension(700, 500));
 
         Object[] options = {"Print", "Close"};
 
@@ -3446,11 +3709,15 @@ public class DashboardFrame extends javax.swing.JFrame {
         );
 
         if (choice == 0) {
-            try {
-                editorPane.print();
-            } catch (PrinterException ex) {
-                JOptionPane.showMessageDialog(this, "Print error: " + ex.getMessage());
-            }
+            new Thread(() -> {
+                try {
+                    editorPane.print();
+                } catch (PrinterException ex) {
+                    javax.swing.SwingUtilities.invokeLater(()
+                            -> JOptionPane.showMessageDialog(this, "Print error: " + ex.getMessage())
+                    );
+                }
+            }).start();
         }
 
 
@@ -3487,69 +3754,13 @@ public class DashboardFrame extends javax.swing.JFrame {
         timeInOut.setVisible(true);
         timeInOut.toFront();
 
-        this.revalidate();
-        this.repaint();
+        this.dispose();
     }//GEN-LAST:event_jButton8ActionPerformed
 
     private void btnSAVE1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnSAVE1ActionPerformed
         // TODO add your handling code here:
         updateEmployee(selectedEmployeeId);
     }//GEN-LAST:event_btnSAVE1ActionPerformed
-
-    private void formWindowClosed(java.awt.event.WindowEvent evt) {//GEN-FIRST:event_formWindowClosed
-        // TODO add your handling code here:
-        if (timeInOut != null) {
-            timeInOut.webcam.close();
-            timeInOut.timer.stop();
-            timeInOut.dispose();
-            timeInOut = null;
-        }
-    }//GEN-LAST:event_formWindowClosed
-
-    private void recordButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_recordButtonActionPerformed
-        // TODO add your handling code here:
-        recordPayslip();
-    }//GEN-LAST:event_recordButtonActionPerformed
-
-    private void printButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_printButtonActionPerformed
-        PrinterJob job = PrinterJob.getPrinterJob();
-        job.setJobName("Print");
-
-        job.setPrintable((graphics, pageFormat, pageIndex) -> {
-            if (pageIndex > 0) {
-                return Printable.NO_SUCH_PAGE;
-            }
-
-            // Convert Graphics to Graphics2D
-            Graphics2D g2 = (Graphics2D) graphics;
-            g2.translate(pageFormat.getImageableX(), pageFormat.getImageableY());
-            receiptArea.printAll(g2);
-            return Printable.PAGE_EXISTS;
-        });
-
-        boolean ok = job.printDialog();
-        if (ok) {
-            try {
-                job.print();
-                JOptionPane.showMessageDialog(this, "Printing Done!");
-            } catch (PrinterException ex) {
-                JOptionPane.showMessageDialog(this, "Printing Failed!\n" + ex.getMessage());
-            }
-        }
-    }//GEN-LAST:event_printButtonActionPerformed
-
-    private void backButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backButtonActionPerformed
-
-        btnUpdate.setEnabled(false);
-        btnRemove.setEnabled(false);
-        generatePayslipButton.setEnabled(false);
-        unselectButton.setEnabled(false);
-        employeesTable.clearSelection();
-
-        receiptArea.setText("");
-
-        card.show(jPanel3, "card4");
-    }//GEN-LAST:event_backButtonActionPerformed
 
     private void jButton9ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton9ActionPerformed
         // TODO add your handling code here:
@@ -3583,34 +3794,262 @@ public class DashboardFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_jButton9ActionPerformed
 
-    private void deletePayrollButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_deletePayrollButtonActionPerformed
+    private void btnExport1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnExport1ActionPerformed
         // TODO add your handling code here:
+        new Thread(() -> {
+            try {
+                payrollTable.print();
+            } catch (PrinterException ex) {
+                javax.swing.SwingUtilities.invokeLater(()
+                        -> JOptionPane.showMessageDialog(this, "Print error: " + ex.getMessage())
+                );
+            }
+        }).start();
 
-        if (JOptionPane.showConfirmDialog(this, "Are you sure you want to save this?", "Confirmation",
-                JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+    }//GEN-LAST:event_btnExport1ActionPerformed
 
-            try (Connection connection = DatabaseConnection.getConnection()) {
+    private void comboDepartmentActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_comboDepartmentActionPerformed
+        // TODO add your handling code here:
+        if (comboDepartment.getSelectedItem() != null) {
 
-                // Delete existing payroll
-                try (PreparedStatement deleteStmt
-                        = connection.prepareStatement("DELETE FROM payroll_table WHERE pay_period = ?")) {
-                    deleteStmt.setString(1, startOfMonth.toString() + " to " + endOfMonth.toString());
-                    deleteStmt.executeUpdate();
+            comboPosition.removeAllItems();
+
+            String sql = "SELECT position_name FROM department_positions "
+                    + "WHERE department_name = ? ORDER BY position_name";
+
+            try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
+
+                ps.setString(1, comboDepartment.getSelectedItem().toString());
+                ResultSet rs = ps.executeQuery();
+
+                while (rs.next()) {
+                    comboPosition.addItem(rs.getString("position_name"));
                 }
 
-                JOptionPane.showMessageDialog(this, "Deleted!");
-
-                fetchPayroll();
-
             } catch (SQLException ex) {
-                Logger.getLogger(DashboardFrame.class.getName()).log(Level.SEVERE, null, ex);
-                JOptionPane.showMessageDialog(this, "Upadating Failed!\n" + ex.getLocalizedMessage());
+                ex.printStackTrace();
             }
         }
-    }//GEN-LAST:event_deletePayrollButtonActionPerformed
+    }//GEN-LAST:event_comboDepartmentActionPerformed
+
+    private void jButton10ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton10ActionPerformed
+        // TODO add your handling code here:
+        card.show(jPanel3, "card8");
+        fetchPositionRateData();
+        loadPositionRateComboBox();
+
+        departmentField.setText("");
+        positionField.setText("");
+        rateField.setText("");
+        positionRateTable.clearSelection();
+
+        addButton1.setEnabled(true);
+        updateButton1.setEnabled(false);
+        removeButton1.setEnabled(false);
+        clearSelectionButton1.setEnabled(false);
+    }//GEN-LAST:event_jButton10ActionPerformed
+
+    private void addButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_addButton1ActionPerformed
+        // TODO add your handling code here:
+        String depeartment = departmentField.getText().trim();
+        String position = positionField.getText().trim();
+        String salaryText = rateField.getText().trim();
+
+        if (position.isEmpty() || salaryText.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter both position and salary.");
+            return;
+        }
+
+        try {
+            BigDecimal salary = new BigDecimal(salaryText);
+
+            String sqlDeparment = "INSERT INTO department_positions (department_name, position_name) VALUES (?, ?)";
+
+            try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sqlDeparment)) {
+
+                ps.setString(1, depeartment);
+                ps.setString(2, position);
+                ps.executeUpdate();
+
+            }
+
+            String sqlPosition = "INSERT INTO position_salary_rate (position_name, salary_rate) VALUES (?, ?)";
+
+            try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sqlPosition)) {
+
+                ps.setString(1, position);
+                ps.setBigDecimal(2, salary);
+                ps.executeUpdate();
+
+            }
+
+            fetchPositionRateData();
+            JOptionPane.showMessageDialog(this, "Add successful.");
+
+            departmentField.setText("");
+            positionField.setText("");
+            rateField.setText("");
+            positionRateTable.clearSelection();
+
+            addButton1.setEnabled(true);
+            updateButton1.setEnabled(false);
+            removeButton1.setEnabled(false);
+            clearSelectionButton1.setEnabled(false);
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Salary must be a valid number.");
+        }
+    }//GEN-LAST:event_addButton1ActionPerformed
+
+    private void positionRateTableMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_positionRateTableMouseClicked
+        // TODO add your handling code here:
+        int selectedRow = positionRateTable.getSelectedRow();
+        if (selectedRow != -1) {
+            departmentField.setText(positionRateTable.getValueAt(selectedRow, 1).toString());
+            positionField.setText(positionRateTable.getValueAt(selectedRow, 2).toString());
+            rateField.setText(positionRateTable.getValueAt(selectedRow, 3).toString());
+        }
+
+        addButton1.setEnabled(false);
+        updateButton1.setEnabled(true);
+        removeButton1.setEnabled(true);
+        clearSelectionButton1.setEnabled(true);
+
+    }//GEN-LAST:event_positionRateTableMouseClicked
+
+    private void removeButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_removeButton1ActionPerformed
+        // TODO add your handling code here:    
+        int selectedRow = positionRateTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Select a position to delete.");
+            return;
+        }
+
+        int id = Integer.parseInt(positionRateTable.getValueAt(selectedRow, 0).toString());
+
+        int confirm = JOptionPane.showConfirmDialog(this, "Are you sure you want to delete this position?", "Confirm Delete", JOptionPane.YES_NO_OPTION);
+        if (confirm != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        String sqlDeparment = "DELETE FROM department_positions WHERE id = ?";
+
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sqlDeparment)) {
+
+            ps.setInt(1, id);
+            ps.executeUpdate();
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+        }
+
+        String sqlPosition = "DELETE FROM position_salary_rate WHERE id = ?";
+
+        try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sqlPosition)) {
+
+            ps.setInt(1, id);
+            ps.executeUpdate();
+
+            JOptionPane.showMessageDialog(this, "Position deleted successfully.");
+            fetchPositionRateData();
+
+            departmentField.setText("");
+            positionField.setText("");
+            rateField.setText("");
+            positionRateTable.clearSelection();
+
+            addButton1.setEnabled(true);
+            updateButton1.setEnabled(false);
+            removeButton1.setEnabled(false);
+            clearSelectionButton1.setEnabled(false);
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+        }
+    }//GEN-LAST:event_removeButton1ActionPerformed
+
+    private void updateButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_updateButton1ActionPerformed
+        // TODO add your handling code here:
+        int selectedRow = positionRateTable.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(this, "Select a position to update.");
+            return;
+        }
+
+        int id = Integer.parseInt(positionRateTable.getValueAt(selectedRow, 0).toString());
+
+        String department = departmentField.getText().trim();
+        String position = positionField.getText().trim();
+        String salaryText = rateField.getText().trim();
+
+        if (position.isEmpty() || salaryText.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Please enter both position and salary.");
+            return;
+        }
+
+        try {
+            BigDecimal salary = new BigDecimal(salaryText);
+
+            String sqlDepartment = "UPDATE department_positions SET department_name = ?, position_name = ? WHERE id = ?";
+
+            try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sqlDepartment)) {
+
+                ps.setString(1, department);
+                ps.setString(2, position);
+                ps.setInt(3, id);
+                ps.executeUpdate();
+
+            }
+
+            String sqlPosition = "UPDATE position_salary_rate SET position_name = ?, salary_rate = ? WHERE id = ?";
+
+            try (Connection con = DatabaseConnection.getConnection(); PreparedStatement ps = con.prepareStatement(sqlPosition)) {
+
+                ps.setString(1, position);
+                ps.setBigDecimal(2, salary);
+                ps.setInt(3, id);
+                ps.executeUpdate();
+
+            }
+
+            fetchPositionRateData();
+            JOptionPane.showMessageDialog(this, "Update successful.");
+
+            departmentField.setText("");
+            positionField.setText("");
+            rateField.setText("");
+            positionRateTable.clearSelection();
+
+            addButton1.setEnabled(true);
+            updateButton1.setEnabled(false);
+            removeButton1.setEnabled(false);
+            clearSelectionButton1.setEnabled(false);
+
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "Salary must be a valid number.");
+        }
+    }//GEN-LAST:event_updateButton1ActionPerformed
+
+    private void clearSelectionButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_clearSelectionButton1ActionPerformed
+        // TODO add your handling code here:
+
+        departmentField.setText("");
+        positionField.setText("");
+        rateField.setText("");
+        positionRateTable.clearSelection();
+
+        addButton1.setEnabled(true);
+        updateButton1.setEnabled(false);
+        removeButton1.setEnabled(false);
+        clearSelectionButton1.setEnabled(false);
+
+    }//GEN-LAST:event_clearSelectionButton1ActionPerformed
+    private JButton activeButton = null; // keeps track of the current active button
 
     private void addButtonHoverEffects() {
-        // lahat ng buttons mo lagay dito
         simpleHover(jButton1);
         simpleHover(jButton2);
         simpleHover(jButton3);
@@ -3619,63 +4058,95 @@ public class DashboardFrame extends javax.swing.JFrame {
         simpleHover(jButton5);
         simpleHover(jButton7);
         simpleHover(jButton8);
+        simpleHover(jButton10);
+
+        setActiveButton(jButton4);
+        activeButton = jButton4;
     }
 
     private void simpleHover(JButton button) {
         Color defaultColor = new Color(26, 0, 51);
         Color hoverColor = new Color(45, 45, 85);
+        Color activeColor = new Color(78, 141, 245); // color for active button
 
         button.setOpaque(true);
         button.setBackground(defaultColor);
+        button.setForeground(new Color(78, 141, 245));
         button.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
         button.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
-                button.setBackground(hoverColor);
-                button.setForeground(new Color(255, 255, 255)); // white text when hover
+                if (button != activeButton) {
+                    button.setBackground(hoverColor);
+                    button.setForeground(Color.WHITE);
+                }
             }
 
             @Override
             public void mouseExited(MouseEvent e) {
-                button.setBackground(defaultColor);
-                button.setForeground(new Color(78, 141, 245)); // balik sa original text color
+                if (button != activeButton) {
+                    button.setBackground(defaultColor);
+                    button.setForeground(new Color(78, 141, 245));
+                }
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                setActiveButton(button);
             }
         });
     }
 
+// call this when you want to set a button as active
+    private void setActiveButton(JButton button) {
+        if (activeButton != null) {
+            // reset previous active button
+            activeButton.setBackground(new Color(26, 0, 51));
+            activeButton.setForeground(new Color(78, 141, 245));
+        }
+
+        activeButton = button;
+        activeButton.setBackground(new Color(78, 141, 245)); // active background
+        activeButton.setForeground(Color.WHITE);              // active text color
+    }
+
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton addButton;
+    private javax.swing.JButton addButton1;
     private javax.swing.JPanel addEmployeePanel;
     private javax.swing.JLabel addUpdateLabel;
+    private javax.swing.JLabel addUpdateLabel1;
     private javax.swing.JPanel addUpdatePanel;
     private javax.swing.JPanel addUpdatePanel1;
+    private javax.swing.JPanel addUpdatePanel2;
     private javax.swing.JLabel addUpdatePasswordLabel;
+    private javax.swing.JLabel addUpdatePasswordLabel1;
     private javax.swing.JLabel addUpdatePasswordLabel2;
     private javax.swing.JLabel addUpdateUsernameLabel;
     private javax.swing.JLabel addUpdateUsernameLabel1;
     private javax.swing.JLabel addUpdateUsernameLabel2;
+    private javax.swing.JLabel addUpdateUsernameLabel3;
     private javax.swing.JLabel address;
     private javax.swing.JPanel attendanceList;
     private javax.swing.JTable attendanceTable;
-    private javax.swing.JButton backButton;
-    private javax.swing.JPanel bagPanel;
     private javax.swing.JLabel birthDate;
     private javax.swing.JButton btnADD;
     private javax.swing.JButton btnCANCEL;
     private javax.swing.JButton btnCLEAR;
+    public javax.swing.JButton btnEdit;
     private javax.swing.JButton btnExport;
+    private javax.swing.JButton btnExport1;
     public javax.swing.JButton btnRemove;
     private javax.swing.JButton btnSAVE1;
-    public javax.swing.JButton btnUpdate;
     private javax.swing.JButton btnUploadPhoto;
     private javax.swing.JButton btnView1;
-    private javax.swing.JPanel buttonsPanel;
     private javax.swing.JButton changeButton;
     private javax.swing.JPanel changePasswordPanel;
     private javax.swing.JCheckBox changePasswordShowPassword;
     private javax.swing.JLabel changePasswordUsernameLabel;
     private javax.swing.JButton clearSelectionButton;
+    private javax.swing.JButton clearSelectionButton1;
     private javax.swing.JComboBox<String> comboDepartment;
     private javax.swing.JComboBox<String> comboGender;
     private javax.swing.JComboBox<String> comboPosition;
@@ -3691,18 +4162,16 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JPanel database;
     private com.toedter.calendar.JDateChooser dateBirth;
     private com.toedter.calendar.JDateChooser dateHired;
-    private javax.swing.JButton deletePayrollButton;
-    private javax.swing.JLabel department;
+    private javax.swing.JLabel departmentAddLabel;
+    private javax.swing.JTextField departmentField;
+    private javax.swing.JLabel departmentLabel;
     private javax.swing.JLabel email;
     public javax.swing.JTable employeesTable;
-    private javax.swing.JTextField endDateField;
-    private javax.swing.JLabel endDateLabel;
     private javax.swing.JLabel gender;
-    private javax.swing.JPanel generatePayslip;
-    public javax.swing.JButton generatePayslipButton;
     private javax.swing.JLabel hiredate;
     private javax.swing.JLabel imageHolder;
     private javax.swing.JButton jButton1;
+    private javax.swing.JButton jButton10;
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton3;
     private javax.swing.JButton jButton4;
@@ -3714,6 +4183,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JComboBox<String> jComboBox;
     private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
+    private javax.swing.JComboBox<String> jComboBox3;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
@@ -3722,6 +4192,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel6;
     private javax.swing.JLabel jLabel7;
     private javax.swing.JLabel jLabel8;
+    private javax.swing.JLabel jLabel9;
     private javax.swing.JPanel jPanel1;
     private javax.swing.JPanel jPanel2;
     public javax.swing.JPanel jPanel3;
@@ -3729,6 +4200,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JPanel jPanel5;
     private javax.swing.JPanel jPanel6;
     private javax.swing.JPanel jPanel8;
+    private javax.swing.JPanel jPanel9;
     private javax.swing.JPopupMenu jPopupMenu1;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
@@ -3739,11 +4211,12 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JTextField jTextField1;
     private javax.swing.JTextField jTextField2;
     private javax.swing.JTextField jTextField3;
+    private javax.swing.JTextField jTextField4;
     private javax.swing.JLabel manageDeductionLabel;
     private javax.swing.JPanel manageDeductions;
+    private javax.swing.JPanel managePositionRates;
     private javax.swing.JPanel manageUsersPanel;
     private javax.swing.JCheckBox manageUsersShowPassword;
-    private javax.swing.JPanel moreInfoPanel;
     private javax.swing.JLabel name;
     private javax.swing.JPasswordField newPasswordField;
     private javax.swing.JLabel newPasswordLabel;
@@ -3755,24 +4228,20 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JPanel payroll;
     private javax.swing.JTable payrollTable;
     private javax.swing.JTextField philhealthField;
+    private javax.swing.JTextField positionField;
     private javax.swing.JLabel positionLabel;
-    private javax.swing.JTextField preparedByField;
-    private javax.swing.JLabel preparedByLabel;
-    private javax.swing.JButton printButton;
+    private javax.swing.JTable positionRateTable;
     private javax.swing.JLabel qrHolder;
-    private javax.swing.JTextArea receiptArea;
-    private javax.swing.JButton recordButton;
+    private javax.swing.JTextField rateField;
     private javax.swing.JMenuItem remove;
     private javax.swing.JButton removeButton;
+    private javax.swing.JButton removeButton1;
     private javax.swing.JButton resetDatabaseButton;
     private javax.swing.JLabel salaryLabel;
     private javax.swing.JPanel settings;
     private javax.swing.JTextField sssField;
-    private javax.swing.JTextField startDateField;
-    private javax.swing.JLabel startDateLabel;
     private javax.swing.JPanel tablePanel;
-    private javax.swing.JTextField totalWorkDaysField;
-    private javax.swing.JLabel totalWorkDaysLabel;
+    private javax.swing.JPanel tablePanel1;
     private javax.swing.JTextField txtAddress;
     private javax.swing.JTextField txtContact;
     private javax.swing.JTextField txtEmail;
@@ -3782,6 +4251,7 @@ public class DashboardFrame extends javax.swing.JFrame {
     private javax.swing.JButton unselectButton1;
     private javax.swing.JMenuItem update;
     private javax.swing.JButton updateButton;
+    private javax.swing.JButton updateButton1;
     private javax.swing.JTextField usernameField;
     private javax.swing.JTable usersTable;
     private javax.swing.JPanel viewEmployeeList;

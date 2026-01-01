@@ -1,5 +1,6 @@
 package employee.management.system;
 
+import newpackage.DatabaseConnection;
 import com.github.sarxos.webcam.Webcam;
 import com.github.sarxos.webcam.WebcamException;
 import com.github.sarxos.webcam.WebcamPanel;
@@ -345,7 +346,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
                                         LocalTime pmtOut = pmTimeOut.toLocalTime();
                                         pmHoursWorked = java.time.Duration.between(pmtIn, pmtOut).toMinutes() / 60.0;
                                     }
-                                    
+
                                     // Compute total hours worked
                                     double totalHoursWork = amHoursWorked + pmHoursWorked;
 
@@ -597,6 +598,7 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
     }// </editor-fold>//GEN-END:initComponents
 
     private void backButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_backButtonActionPerformed
+        // TODO add your handling code here:
         if (JOptionPane.showConfirmDialog(this, "Are you sure you want to go Back?",
                 "Confimation", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
 
@@ -604,6 +606,8 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
             webcam.close();
 
             this.dispose();
+
+            new LoginPage(dashboard).setVisible(true);
 
         }
     }//GEN-LAST:event_backButtonActionPerformed
@@ -617,6 +621,10 @@ public class TimeInOutFrame1 extends javax.swing.JFrame implements Runnable, Thr
 
         timer.stop();
         webcam.close();
+
+        this.dispose();
+
+        new LoginPage(dashboard).setVisible(true);
 
     }//GEN-LAST:event_formWindowClosing
 

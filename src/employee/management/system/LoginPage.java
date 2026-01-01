@@ -1,5 +1,6 @@
 package employee.management.system;
 
+import newpackage.DatabaseConnection;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.sql.Connection;
@@ -10,23 +11,23 @@ import java.sql.SQLException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JOptionPane;
+import javax.swing.UIManager;
 
 public class LoginPage extends javax.swing.JFrame {
 
     DashboardFrame dashboard;
-    
+
     char echoChar;
-    
+
     Preferences prefs = Preferences.userRoot().node("EmployeeManagementSystem.Preferences");
 
     public LoginPage(DashboardFrame dashboard) {
         this.dashboard = dashboard;
         dashboard.Connect();
         initComponents();
-        
+
         echoChar = passwordField.getEchoChar();
-        
-        
+
         javax.swing.SwingUtilities.invokeLater(() -> usernameField.requestFocusInWindow());
 
         usernameField.addKeyListener(new KeyAdapter() {
@@ -122,6 +123,7 @@ public class LoginPage extends javax.swing.JFrame {
         jCheckBox1.setBackground(new java.awt.Color(30, 3, 62));
         jCheckBox1.setForeground(new java.awt.Color(255, 255, 255));
         jCheckBox1.setText("Remember me");
+        jCheckBox1.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
         jCheckBox1.setFocusable(false);
 
         passwordField.setBackground(new java.awt.Color(204, 255, 255));
@@ -145,8 +147,11 @@ public class LoginPage extends javax.swing.JFrame {
         });
         jPanel3.add(jButton2, new java.awt.GridBagConstraints());
 
+        showPassword.setBackground(new java.awt.Color(30, 3, 62));
         showPassword.setForeground(new java.awt.Color(255, 255, 255));
         showPassword.setText("Show Password");
+        showPassword.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        showPassword.setFocusable(false);
         showPassword.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 showPasswordActionPerformed(evt);
